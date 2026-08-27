@@ -5,11 +5,52 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agent import PROJECT_ROOT, create_analysis_agent
-from app.prompts import ANALYST_PROMPT
 
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+
+TRACE_TOOL_RESULT_CHARS = 400
+TRACE_TOOL_ARGS_CHARS = 200
+
+
+def _shorten(text, limit: int) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def run_agent(agent, user_message: str) -> str:
+    """Run the agent, streaming its trace (tool calls, results, text) live."""
+    final_content = ""
+    for mode, payload in agent.stream(
+        {"messages": [{"role": "user", "content": user_message}]},
+        stream_mode=["messages", "updates"],
+    ):
+        if mode == "messages":
+            chunk = payload[0]
+            has_tool_calls = bool(getattr(chunk, "tool_call_chunks", None))
+            if isinstance(chunk.content, str) and chunk.content and not has_tool_calls:
+                print(chunk.content, end="", flush=True)
+        elif mode == "updates":
+            for update in payload.values():
+                for message in (update or {}).get("messages", []):
+                    if isinstance(message, AIMessage) and message.tool_calls:
+                        print()
+                        for call in message.tool_calls:
+                            args = _shorten(call.get("args"), TRACE_TOOL_ARGS_CHARS)
+                            print(f"  [tool call] {call['name']}({args})")
+                    elif isinstance(message, ToolMessage):
+                        result = message.content
+                        if isinstance(result, list):  # content blocks
+                            result = " ".join(
+                                b.get("text", "") if isinstance(b, dict) else str(b)
+                                for b in result
+                            )
+                        print(f"  [tool result] {_shorten(result, TRACE_TOOL_RESULT_CHARS)}")
+                    if isinstance(message, AIMessage) and message.content and not message.tool_calls:
+                        final_content = message.content
+    return final_content
 
 
 def report_dataset(path: Path) -> pd.DataFrame:
@@ -65,9 +106,8 @@ def main() -> None:
         "required markdown output format."
     )
 
-    print("Running analysis...\n")
-    result = agent.invoke({"messages": [{"role": "user", "content": user_message}]})
-    final = result["messages"][-1].content
+    print("Running analysis... (live trace below)\n")
+    final = run_agent(agent, user_message)
 
     print("\n" + "=" * 60 + "\n")
     print(final)
