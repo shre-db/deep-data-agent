@@ -1,0 +1,19 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+  
+    "provider": {
+      "empero": {
+        "npm": "@ai-sdk/openai-compatible",
+        "name": "Empero Free",
+        "options": {
+          "baseURL": "https://free.empero.org/v1",
+          "apiKey": "free"
+        },
+        "models": {
+          "glm-5.3-flash": {
+            "name": "GLM 5.3 Flash"
+          }
+        }
+      }
+    }
+  }
