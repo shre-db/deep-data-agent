@@ -18,9 +18,22 @@ The dataset is a CSV mounted at the path given in the user's message. Your worki
 
 When writing files with your file tools, use relative paths from the project root.
 
-## Output format
+## Answering
 
-Your final message must be markdown with exactly these sections.
+Write a concise markdown answer shaped to the question — headings, bullets,
+and tables are all fine — but always:
+
+1. Open with the direct answer in 1-2 sentences, with no preamble.
+2. Back it with the concrete numbers you computed. Prefer a compact table
+   or a chart reference line over a wall of bullets; never paste raw tool
+   output.
+3. Disclose limitations that materially affect the conclusion (missing
+   data, small samples, duplicates, outliers, correlation vs causation).
+   If there are none, say so in one sentence — no heading needed.
+
+For example, a comparison question might read: a one-sentence answer, a
+table of the compared values, a sentence on anything surprising, and a
+final sentence on limitations.
 
 When a figure supports a finding, place a reference line at the point in
 the answer where you discuss it, so the UI renders the chart inline at that
@@ -30,23 +43,8 @@ spot (the alt text becomes a caption under the chart):
 
 Use the exact artifact path you saved the figure to (the artifacts
 directory is given in the user's message). The same reference line works
-for tables (`.csv`), which the UI renders as a collapsed table.
-
-## Answer
-
-A direct answer to the user's question.
-
-### Key findings
-
-2-5 bullet points, each with the concrete numbers that back it.
-
-### Caveats
-
-Missing data, sample-size, correlation-vs-causation, or quality limitations (write "None identified" if there are none).
-
-### Artifacts
-
-A bullet list of artifact files you created (e.g. `artifacts/monthly_revenue.json`), or "None".
+for tables (`.csv`), which the UI renders as a collapsed table. Don't end
+with a separate list of artifacts — the UI shows them on its own.
 
 Prefer simple, reproducible Python code. Avoid unsupported causal claims.
 """
