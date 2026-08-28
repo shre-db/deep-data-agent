@@ -30,8 +30,16 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
       {"type": "tool_call", "name": str, "args": str}
       {"type": "tool_result", "text": str}
       {"type": "final", "text": str}        - the final answer message
+
+    Streamed text is buffered per message id; a buffer whose id matches the
+    final answer message is suppressed so the answer is only emitted once
+    (as "final"), not duplicated inside the commentary trace.
     """
     final_content = ""
+    final_id = None
+    buf_id = None
+    buf_text = ""
+
     for mode, payload in agent.stream(
         {"messages": [{"role": "user", "content": user_message}]},
         config={"configurable": {"thread_id": thread_id}},
@@ -41,11 +49,20 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
             chunk = payload[0]
             has_tool_calls = bool(getattr(chunk, "tool_call_chunks", None))
             if isinstance(chunk.content, str) and chunk.content and not has_tool_calls:
-                yield {"type": "text_delta", "text": chunk.content}
+                chunk_id = getattr(chunk, "id", None)
+                if buf_id is not None and chunk_id != buf_id and buf_text:
+                    # New message started: the previous buffer is commentary.
+                    yield {"type": "text_delta", "text": buf_text}
+                    buf_text = ""
+                buf_id = chunk_id
+                buf_text += chunk.content
         elif mode == "updates":
             for update in payload.values():
                 for message in (update or {}).get("messages", []):
                     if isinstance(message, AIMessage) and message.tool_calls:
+                        if buf_text:
+                            yield {"type": "text_delta", "text": buf_text}
+                            buf_text = ""
                         for call in message.tool_calls:
                             yield {
                                 "type": "tool_call",
@@ -53,6 +70,9 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
                                 "args": _shorten(call.get("args"), TRACE_TOOL_ARGS_CHARS),
                             }
                     elif isinstance(message, ToolMessage):
+                        if buf_text:
+                            yield {"type": "text_delta", "text": buf_text}
+                            buf_text = ""
                         yield {
                             "type": "tool_result",
                             "text": _shorten(
@@ -61,5 +81,10 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
                         }
                     if isinstance(message, AIMessage) and message.content and not message.tool_calls:
                         final_content = message.content
+                        final_id = message.id
+
     if final_content:
+        if buf_text and buf_id != final_id:
+            # Trailing commentary from a message other than the final answer.
+            yield {"type": "text_delta", "text": buf_text}
         yield {"type": "final", "text": final_content}

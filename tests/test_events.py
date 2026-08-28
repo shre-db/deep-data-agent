@@ -10,7 +10,7 @@ class StubAgent:
 
     def stream(self, _input, config=None, stream_mode=None):
         assert stream_mode == ["messages", "updates"]
-        yield ("messages", (AIMessageChunk(content="Hello ", tool_call_chunks=[]), {}))
+        yield ("messages", (AIMessageChunk(content="Hello ", id="m1", tool_call_chunks=[]), {}))
         yield (
             "updates",
             {
@@ -18,6 +18,7 @@ class StubAgent:
                     "messages": [
                         AIMessage(
                             content="",
+                            id="m1",
                             tool_calls=[
                                 {
                                     "name": "inspect_dataset",
@@ -36,8 +37,10 @@ class StubAgent:
             "updates",
             {"tools": {"messages": [ToolMessage(content="shape info", tool_call_id="1")]}},
         )
-        yield ("messages", (AIMessageChunk(content="world"), {}))
-        yield ("updates", {"model": {"messages": [AIMessage(content="Final answer")]}},)
+        # Final answer message: streams with id m2, then completes with id m2.
+        yield ("messages", (AIMessageChunk(content="Final ", id="m2"), {}))
+        yield ("messages", (AIMessageChunk(content="answer", id="m2"), {}))
+        yield ("updates", {"model": {"messages": [AIMessage(content="Final answer", id="m2")]}})
 
 
 def test_stream_events_order_and_shapes():
@@ -46,14 +49,20 @@ def test_stream_events_order_and_shapes():
         "text_delta",
         "tool_call",
         "tool_result",
-        "text_delta",
         "final",
     ]
     assert events[0]["text"] == "Hello "
     assert events[1]["name"] == "inspect_dataset"
     assert events[1]["args"] == "{'path': 'data/x.csv'}"
     assert events[2]["text"] == "shape info"
-    assert events[4]["text"] == "Final answer"
+    assert events[3]["text"] == "Final answer"
+
+
+def test_final_answer_not_duplicated_in_trace():
+    events = list(stream_events(StubAgent(), "question", "thread-1"))
+    commentary = "".join(e["text"] for e in events if e["type"] == "text_delta")
+    assert "Final answer" not in commentary
+    assert "Hello" in commentary
 
 
 def test_stream_events_truncates_tool_results():

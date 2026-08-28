@@ -11,9 +11,10 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from dotenv import dotenv_values
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agent import PROJECT_ROOT, build_checkpointer, create_analysis_agent
-from app.events import stream_events
+from app.events import _shorten, stream_events
 from app.main import thread_artifacts_dir
 
 st.set_page_config(page_title="deep-data-agent", page_icon=None, layout="centered")
@@ -31,6 +32,62 @@ def _new_thread_id() -> str:
 
 def _model_spec() -> str:
     return dotenv_values(PROJECT_ROOT / ".env").get("MODEL") or "empero:glm-5.3-flash"
+
+
+def _extract_question(content: str) -> str:
+    """Recover the user's raw question from the wrapped prompt message."""
+    if "Answer this question about it:" in content:
+        tail = content.split("Answer this question about it:", 1)[1]
+        question = tail.split("\n\nRemember:", 1)[0].strip()
+        if question:
+            return question
+    return content
+
+
+def load_thread_history(agent, thread_id: str) -> list[dict] | None:
+    """Rebuild chat turns from the checkpointer; None if thread is empty."""
+    state = agent.get_state({"configurable": {"thread_id": thread_id}})
+    messages = (state.values or {}).get("messages", []) if state.values else []
+    if not messages:
+        return None
+
+    turns: list[dict] = []
+    trace: list[dict] = []
+    for m in messages:
+        if isinstance(m, HumanMessage):
+            turns.append(
+                {"role": "user", "content": _extract_question(str(m.content)),
+                 "trace": [], "artifacts": []}
+            )
+        elif isinstance(m, AIMessage) and m.tool_calls:
+            for call in m.tool_calls:
+                trace.append(
+                    {
+                        "type": "tool_call",
+                        "name": call["name"],
+                        "args": _shorten(call.get("args"), 200),
+                    }
+                )
+        elif isinstance(m, ToolMessage):
+            text = m.content
+            if isinstance(text, list):
+                text = " ".join(
+                    b.get("text", "") if isinstance(b, dict) else str(b) for b in text
+                )
+            trace.append({"type": "tool_result", "text": _shorten(text, 400)})
+        elif isinstance(m, AIMessage) and m.content:
+            turns.append(
+                {"role": "assistant", "content": m.content,
+                 "trace": list(trace), "artifacts": []}
+            )
+            trace = []
+
+    if turns and turns[-1]["role"] == "assistant":
+        artifacts_dir = thread_artifacts_dir(thread_id)
+        turns[-1]["artifacts"] = sorted(
+            p for p in artifacts_dir.iterdir() if p.is_file()
+        )
+    return turns
 
 
 def _artifact_label(path: Path) -> str:
@@ -93,6 +150,8 @@ def main() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    agent = get_agent()
+
     with st.sidebar:
         st.subheader("Session")
         st.caption(f"Thread: `{st.session_state.thread_id}`")
@@ -102,9 +161,13 @@ def main() -> None:
             st.rerun()
         resume = st.text_input("Resume thread id", placeholder="session-...")
         if st.button("Load thread", disabled=not resume.strip(), use_container_width=True):
-            st.session_state.thread_id = resume.strip()
-            st.session_state.messages = []
-            st.rerun()
+            turns = load_thread_history(agent, resume.strip())
+            if turns is None:
+                st.sidebar.warning(f"No conversation found for thread `{resume.strip()}`.")
+            else:
+                st.session_state.thread_id = resume.strip()
+                st.session_state.messages = turns
+                st.rerun()
 
         st.divider()
         st.subheader("Data")
@@ -114,7 +177,6 @@ def main() -> None:
         st.caption(f"Model: `{_model_spec()}`")
         st.caption("Artifacts are saved under artifacts/<thread>/.")
 
-    agent = get_agent()
     artifacts_dir = thread_artifacts_dir(st.session_state.thread_id)
 
     for msg in st.session_state.messages:
