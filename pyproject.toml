@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "deepagents>=0.7.9",
     "langchain-openai>=0.3.0",
+    "langgraph-checkpoint-sqlite>=3.1.1",
     "matplotlib>=3.8",
     "numpy>=1.26",
     "pandas>=2.2",

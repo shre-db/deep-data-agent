@@ -219,3 +219,4 @@ __marimo__/
 artifacts/*
 !artifacts/.gitkeep
 .env
+.checkpoints/

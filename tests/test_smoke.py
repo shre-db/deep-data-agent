@@ -29,6 +29,16 @@ def test_agent_construction():
     assert agent is not None
 
 
+def test_agent_with_checkpointer(tmp_path):
+    from app.agent import build_checkpointer, create_analysis_agent
+
+    saver = build_checkpointer(tmp_path / "threads.db")
+    assert saver is not None
+    assert (tmp_path / "threads.db").exists()
+    agent = create_analysis_agent(checkpointer=saver)
+    assert agent is not None
+
+
 def test_inspect_dataset_tool():
     from app.agent import inspect_dataset
 

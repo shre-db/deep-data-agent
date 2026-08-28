@@ -59,6 +59,12 @@ def build_model(model_spec: str | None = None):
     kwargs = {"model": model_name, "api_key": api_key}
     if cfg["base_url"]:
         kwargs["base_url"] = cfg["base_url"]
+    # Cap max_tokens so constrained/free provider tiers with small credit
+    # balances don't reject the request outright (override with MAX_TOKENS).
+    try:
+        kwargs["max_tokens"] = int(os.environ.get("MAX_TOKENS", "8192"))
+    except ValueError:
+        pass
     return ChatOpenAI(**kwargs)
 
 
@@ -111,15 +117,32 @@ def _build_backend() -> LocalShellBackend:
     )
 
 
-def create_analysis_agent(model=None):
+def create_analysis_agent(model=None, checkpointer=None):
     """Create the data analysis Deep Agent.
 
     Kept as a factory so specialized subagents (analyst/reviewer) can be
     added later via the `subagents` parameter.
+
+    Args:
+        model: Optional pre-built chat model; defaults to build_model().
+        checkpointer: Optional LangGraph checkpointer for multi-turn memory.
     """
     return create_deep_agent(
         model=model or build_model(),
         tools=[inspect_dataset],
         system_prompt=ANALYST_PROMPT,
         backend=_build_backend(),
+        checkpointer=checkpointer,
     )
+
+
+def build_checkpointer(db_path: Path | None = None):
+    """Create a SQLite checkpointer persisted under .checkpoints/."""
+    import sqlite3
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    db_path = db_path or PROJECT_ROOT / ".checkpoints" / "threads.db"
+    db_path.parent.mkdir(exist_ok=True)
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    return SqliteSaver(conn)
