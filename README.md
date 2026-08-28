@@ -96,6 +96,23 @@ Artifacts saved:
 - artifacts/default/analysis.py
 ```
 
+## Web UI
+
+A minimal Streamlit chat frontend is included:
+
+```bash
+uv run streamlit run app/ui.py
+```
+
+- Chat with the agent in the browser; each conversation gets its own thread
+  and artifact folder (`artifacts/<thread>/`).
+- The agent's research trace (commentary, tool calls, tool results) is shown
+  in a collapsible "Analysis trace" panel per message.
+- Charts and tables generated during a turn render inline under the answer;
+  scripts are listed as plain captions.
+- The sidebar has the dataset path, model display, and thread controls
+  (new conversation / resume by thread id).
+
 ## Conversation memory
 
 Sessions are persisted per thread with a SQLite checkpointer in
@@ -135,9 +152,11 @@ tool results, and generated text — no blank-screen waiting.
 app/
 ├── main.py      # CLI: args, dataset report, live trace, interactive loop, artifacts
 ├── agent.py     # model factory, checkpointer, dataset tool, sandboxed backend
-└── prompts.py   # analyst system prompt + output format
+├── events.py    # shared agent event stream (used by CLI and UI)
+├── prompts.py   # analyst system prompt + output format
+└── ui.py        # Streamlit chat frontend
 data/            # sample synthetic sales dataset
-artifacts/       # runtime-generated scripts, tables, plots (gitignored)
+artifacts/       # runtime-generated scripts, tables, plots, per thread (gitignored)
 .checkpoints/    # SQLite conversation memory per thread (gitignored)
 tests/           # smoke tests (no LLM calls)
 scripts/         # sample data generator

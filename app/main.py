@@ -7,12 +7,9 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agent import PROJECT_ROOT, build_checkpointer, create_analysis_agent
-
-TRACE_TOOL_RESULT_CHARS = 400
-TRACE_TOOL_ARGS_CHARS = 200
+from app.events import stream_events
 
 
 def thread_artifacts_dir(thread_id: str) -> Path:
@@ -23,42 +20,18 @@ def thread_artifacts_dir(thread_id: str) -> Path:
     return path
 
 
-def _shorten(text, limit: int) -> str:
-    text = " ".join(str(text).split())
-    return text if len(text) <= limit else text[: limit - 3] + "..."
-
-
 def run_agent(agent, user_message: str, thread_id: str) -> str:
-    """Run the agent, streaming its trace (tool calls, results, text) live."""
+    """Run the agent, printing its trace (tool calls, results, text) live."""
     final_content = ""
-    for mode, payload in agent.stream(
-        {"messages": [{"role": "user", "content": user_message}]},
-        config={"configurable": {"thread_id": thread_id}},
-        stream_mode=["messages", "updates"],
-    ):
-        if mode == "messages":
-            chunk = payload[0]
-            has_tool_calls = bool(getattr(chunk, "tool_call_chunks", None))
-            if isinstance(chunk.content, str) and chunk.content and not has_tool_calls:
-                print(chunk.content, end="", flush=True)
-        elif mode == "updates":
-            for update in payload.values():
-                for message in (update or {}).get("messages", []):
-                    if isinstance(message, AIMessage) and message.tool_calls:
-                        print()
-                        for call in message.tool_calls:
-                            args = _shorten(call.get("args"), TRACE_TOOL_ARGS_CHARS)
-                            print(f"  [tool call] {call['name']}({args})")
-                    elif isinstance(message, ToolMessage):
-                        result = message.content
-                        if isinstance(result, list):  # content blocks
-                            result = " ".join(
-                                b.get("text", "") if isinstance(b, dict) else str(b)
-                                for b in result
-                            )
-                        print(f"  [tool result] {_shorten(result, TRACE_TOOL_RESULT_CHARS)}")
-                    if isinstance(message, AIMessage) and message.content and not message.tool_calls:
-                        final_content = message.content
+    for event in stream_events(agent, user_message, thread_id):
+        if event["type"] == "text_delta":
+            print(event["text"], end="", flush=True)
+        elif event["type"] == "tool_call":
+            print(f"  [tool call] {event['name']}({event['args']})")
+        elif event["type"] == "tool_result":
+            print(f"  [tool result] {event['text']}")
+        elif event["type"] == "final":
+            final_content = event["text"]
     return final_content
 
 
