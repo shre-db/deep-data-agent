@@ -112,81 +112,97 @@ def _tool_label(name: str, args: str) -> str:
     return name
 
 
-def group_trace(events: list[dict]) -> list[dict]:
-    """Assemble ordered events into renderable steps.
+class StepCollector:
+    """Assemble trace events into renderable steps, incrementally.
 
-    Result-bearing events (output/error/status/tool_result) attach to their
-    step by tool_call_id when available, falling back to the immediately
-    preceding open step. Handles interleaved multi-call messages.
-
-    Step kinds:
-      {"kind": "note", "text": str}
-      {"kind": "command", "command": str, "output": str, "error": str,
-       "status": {"ok": bool, "code": int} | None}
-      {"kind": "tool", "name": str, "args": str, "result": str}
+    Results attach to their step by tool_call_id (falling back to the most
+    recent open step). `add()` returns steps that just completed (ready to
+    render); `flush()` returns steps that never received a result. Every
+    step is appended to `steps` at creation, so `steps` always holds the
+    full ordered list (used by static rendering).
     """
-    steps: list[dict] = []
-    open_by_id: dict = {}  # tool_call_id -> step awaiting its result
 
-    def _open_step(step):
-        steps.append(step)
-        sid = step.get("id")
-        if sid:
-            open_by_id[sid] = step
-        return step
+    def __init__(self) -> None:
+        self.steps: list[dict] = []
+        self._open: dict = {}  # tool_call_id -> step awaiting its result
+        self._fallback: dict | None = None  # for id-less events
 
-    def _resolve_step(event, pop: bool) -> dict | None:
+    def _track(self, step: dict) -> None:
+        self.steps.append(step)
+        if step.get("id"):
+            self._open[step["id"]] = step
+        else:
+            self._fallback = step
+
+    def _resolve(self, event, pop: bool) -> dict | None:
         sid = event.get("id")
-        if sid and sid in open_by_id:
-            step = open_by_id[sid]
+        if sid and sid in self._open:
+            step = self._open[sid]
             if pop:
-                open_by_id.pop(sid)
+                del self._open[sid]
             return step
-        if steps and steps[-1].get("awaiting_result"):
-            return steps[-1]
+        step = self._fallback
+        if step is not None and step.get("awaiting_result"):
+            if pop:
+                self._fallback = None
+            return step
         return None
 
-    for event in events:
+    def add(self, event: dict) -> list[dict]:
         kind = event["type"]
-        if kind == "final":
-            continue
-        if kind == "commentary":
-            steps.append({"kind": "note", "text": event["text"]})
-        elif kind == "command":
-            _open_step(
+        if kind in {"commentary", "final"}:
+            if kind == "commentary":
+                self.steps.append({"kind": "note", "text": event["text"]})
+            return []
+        if kind == "command":
+            self._track(
                 {"kind": "command", "id": event.get("id"), "command": event["text"],
                  "output": "", "error": "", "status": None, "awaiting_result": True}
             )
-        elif kind == "output":
-            step = _resolve_step(event, pop=False)
-            if step and step["kind"] == "command":
-                step["output"] = event["text"]
-            else:
-                steps.append({"kind": "note", "text": event["text"]})
-        elif kind == "error":
-            step = _resolve_step(event, pop=False)
-            if step and step["kind"] == "command":
-                step["error"] = event["text"]
-            else:
-                steps.append({"kind": "note", "text": event["text"]})
-        elif kind == "status":
-            step = _resolve_step(event, pop=True)
-            if step and step["kind"] == "command":
-                step["status"] = {"ok": event["ok"], "code": event["code"]}
-                step["awaiting_result"] = False
-        elif kind == "tool_call":
-            _open_step(
+            return []
+        if kind == "tool_call":
+            self._track(
                 {"kind": "tool", "id": event.get("id"), "name": event["name"],
                  "args": event["args"], "result": "", "awaiting_result": True}
             )
+            return []
+
+        pop = kind in {"status", "tool_result"}
+        step = self._resolve(event, pop=pop)
+        if step is None:
+            if kind in {"output", "error", "tool_result"}:
+                # Orphan result: keep it in the step list and surface it now.
+                note = {"kind": "note", "text": event["text"]}
+                self.steps.append(note)
+                return [note]
+            return []
+        if kind == "output":
+            step["output"] = event["text"]
+        elif kind == "error":
+            step["error"] = event["text"]
+        elif kind == "status":
+            step["status"] = {"ok": event["ok"], "code": event["code"]}
+            step["awaiting_result"] = False
         elif kind == "tool_result":
-            step = _resolve_step(event, pop=True)
-            if step and step["kind"] == "tool":
-                step["result"] = event["text"]
-                step["awaiting_result"] = False
-            else:
-                steps.append({"kind": "note", "text": event["text"]})
-    return steps
+            step["result"] = event["text"]
+            step["awaiting_result"] = False
+        return [step] if pop else []
+
+    def flush(self) -> list[dict]:
+        leftover = [s for s in self.steps if s.get("awaiting_result")]
+        for step in leftover:
+            step["awaiting_result"] = False
+        self._open.clear()
+        self._fallback = None
+        return leftover
+
+
+def group_trace(events: list[dict]) -> list[dict]:
+    """Assemble a completed event list into renderable steps."""
+    collector = StepCollector()
+    for event in events:
+        collector.add(event)
+    return collector.steps
 
 
 def render_command_step(step: dict) -> None:
@@ -217,14 +233,18 @@ def render_tool_step(step: dict) -> None:
             st.caption(f"{step['name']}({_one_line(step['args'], 80)})")
 
 
+def render_step(step: dict) -> None:
+    if step["kind"] == "note":
+        st.caption(step["text"])
+    elif step["kind"] == "command":
+        render_command_step(step)
+    elif step["kind"] == "tool":
+        render_tool_step(step)
+
+
 def render_steps(steps: list[dict]) -> None:
     for step in steps:
-        if step["kind"] == "note":
-            st.caption(step["text"])
-        elif step["kind"] == "command":
-            render_command_step(step)
-        elif step["kind"] == "tool":
-            render_tool_step(step)
+        render_step(step)
 
 
 def render_trace(events: list[dict]) -> None:
@@ -335,20 +355,10 @@ def main() -> None:
         trace: list[dict] = []
         final = ""
         # Live rendering renders each step ONCE, complete, via the same
-        # render helpers as static history — no container re-entry (writing
-        # into an expander across other elements is unreliable). Steps are
-        # buffered until their result arrives (output/error/status follow
-        # the command immediately; tool_result follows its tool_call).
-        pending: dict | None = None
-
-        def flush_step() -> None:
-            nonlocal pending
-            if pending is not None:
-                if pending["kind"] == "command":
-                    render_command_step(pending)
-                else:
-                    render_tool_step(pending)
-                pending = None
+        # render helpers as static history (StepCollector). Results pair to
+        # their step by tool_call_id, so multi-call messages keep their own
+        # expanders; nothing is written into an expander after creation.
+        collector = StepCollector()
 
         try:
             with status:
@@ -358,43 +368,12 @@ def main() -> None:
                     if kind == "final":
                         final = event["text"]
                     elif kind == "commentary":
-                        flush_step()
                         st.caption(event["text"])
-                    elif kind == "command":
-                        flush_step()
-                        pending = {
-                            "kind": "command", "id": event.get("id"),
-                            "command": event["text"], "output": "",
-                            "error": "", "status": None,
-                        }
-                    elif kind == "output":
-                        if pending and pending["kind"] == "command":
-                            pending["output"] = event["text"]
-                    elif kind == "error":
-                        if pending and pending["kind"] == "command":
-                            pending["error"] = event["text"]
-                    elif kind == "status":
-                        if pending and pending["kind"] == "command":
-                            pending["status"] = {"ok": event["ok"], "code": event["code"]}
-                            flush_step()
-                    elif kind == "tool_call":
-                        flush_step()
-                        pending = {
-                            "kind": "tool", "id": event.get("id"),
-                            "name": event["name"], "args": event["args"], "result": "",
-                        }
-                    elif kind == "tool_result":
-                        matches = (
-                            pending and pending["kind"] == "tool"
-                            and (event.get("id") is None or event.get("id") == pending.get("id"))
-                        )
-                        if matches:
-                            pending["result"] = event["text"]
-                            flush_step()
-                        else:
-                            flush_step()
-                            st.caption(event["text"])
-                flush_step()
+                    else:
+                        for step in collector.add(event):
+                            render_step(step)
+                for step in collector.flush():
+                    render_step(step)
             status.update(label="Analysis trace", state="complete", expanded=False)
         except Exception as e:  # noqa: BLE001
             status.update(label="Analysis failed", state="error", expanded=True)
