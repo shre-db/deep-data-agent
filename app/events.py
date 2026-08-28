@@ -1,10 +1,12 @@
 """Shared agent streaming: yields structured events for any frontend."""
 
 import json
+import os
 import re
+import time
 from typing import Iterator
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 
 # Output block limits (lines preserved; only whole lines are dropped)
 MAX_OUTPUT_LINES_HEAD = 30
@@ -172,7 +174,35 @@ def classify_messages(messages, seen: set | None = None) -> Iterator[dict]:
         yield from _message_events(message, seen, include_commentary=True, tool_names=tool_names)
 
 
+def _norm(text: str) -> str:
+    return " ".join(str(text).split())
+
+
+def _is_echo(text: str, last_result_norm: str) -> bool:
+    """True if commentary text is (mostly) a verbatim echo of the previous
+    tool result — some models copy tool output into their message content.
+
+    Compares normalized prefixes; genuine commentary quoting a few words or
+    summarizing stays visible.
+    """
+    text_norm = _norm(text)
+    if not text_norm or not last_result_norm:
+        return False
+    probe = last_result_norm[:120]
+    return len(probe) >= 40 and probe in text_norm
+
+
 def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
+    """Yield events from one agent turn; logs them when DEBUG_TRACE is set."""
+    debug_path = os.environ.get("DEBUG_TRACE")
+    for event in _stream_events_impl(agent, user_message, thread_id):
+        if debug_path:
+            with open(debug_path, "a") as fh:
+                fh.write(json.dumps({"ts": time.time(), **event}) + "\n")
+        yield event
+
+
+def _stream_events_impl(agent, user_message: str, thread_id: str) -> Iterator[dict]:
     """Run the agent for one turn, yielding ordered events.
 
     Event shapes (step events carry `id` = tool_call_id for pairing):
@@ -195,11 +225,14 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
     buf_text = ""
     seen: set = set()
     tool_names: dict = {}
+    last_result_norm = ""  # to detect models echoing tool results in commentary
 
     def commentary_events() -> Iterator[dict]:
         nonlocal buf_id, buf_text
         if buf_text.strip():
-            yield {"type": "commentary", "text": buf_text.strip()}
+            text = buf_text.strip()
+            if not _is_echo(text, last_result_norm):
+                yield {"type": "commentary", "text": text}
         buf_id, buf_text = None, ""
 
     for mode, payload in agent.stream(
@@ -209,12 +242,19 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
     ):
         if mode == "messages":
             chunk = payload[0]
+            # LangGraph's messages stream also emits node outputs (e.g. the
+            # tools node's ToolMessage with the full tool result). Only
+            # chat-model messages belong in the commentary buffer — tool
+            # results are rendered from the updates stream instead.
+            if not isinstance(chunk, (AIMessage, AIMessageChunk)):
+                continue
             has_tool_calls = bool(getattr(chunk, "tool_call_chunks", None))
             if isinstance(chunk.content, str) and chunk.content and not has_tool_calls:
                 chunk_id = getattr(chunk, "id", None)
                 if buf_id is not None and chunk_id != buf_id and buf_text.strip():
                     # New message started: the previous buffer is commentary.
-                    yield {"type": "commentary", "text": buf_text.strip()}
+                    if not _is_echo(buf_text, last_result_norm):
+                        yield {"type": "commentary", "text": buf_text.strip()}
                     buf_text = ""
                 buf_id = chunk_id
                 buf_text += chunk.content
@@ -232,10 +272,13 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
                             final_id = getattr(message, "id", None)
                             continue
                         yield from commentary_events()
+                        if event["type"] in {"output", "tool_result"}:
+                            last_result_norm = _norm(event["text"])
                         yield event
 
     if final_content:
         if buf_text.strip() and buf_id != final_id:
             # Trailing commentary from a message other than the final answer.
-            yield {"type": "commentary", "text": buf_text.strip()}
+            if not _is_echo(buf_text, last_result_norm):
+                yield {"type": "commentary", "text": buf_text.strip()}
         yield {"type": "final", "text": final_content}

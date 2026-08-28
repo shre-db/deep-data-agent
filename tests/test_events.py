@@ -278,3 +278,126 @@ def test_classify_messages_without_name_uses_tool_call_id():
     ]
     events = list(classify_messages(msgs))
     assert [e["type"] for e in events] == ["command", "output", "status"]
+
+
+def test_toolmessage_in_messages_stream_not_treated_as_commentary():
+    """LangGraph's messages stream emits node outputs as well as LLM tokens:
+    the tools node's ToolMessage arrives there with the full tool result.
+    Only chat-model messages may enter the commentary buffer, or the tool
+    output would be rendered twice (once as a note, once in the expander)."""
+
+    class NodeOutputAgent:
+        def stream(self, _input, config=None, stream_mode=None):
+            yield ("messages", (AIMessageChunk(content="Let me run ", id="m1"), {}))
+            yield ("messages", (AIMessageChunk(content="a command.", id="m1"), {}))
+            yield (
+                "updates",
+                {
+                    "model": {
+                        "messages": [
+                            AIMessage(
+                                content="Let me run a command.",
+                                id="m1",
+                                tool_calls=[
+                                    {"name": "execute", "args": {"command": "ls"},
+                                     "id": "c1", "type": "tool_call"},
+                                ],
+                            )
+                        ]
+                    }
+                },
+            )
+            # Node-output emission: the tools node's ToolMessage in messages mode
+            yield (
+                "messages",
+                (
+                    ToolMessage(
+                        content="file1\nfile2\n\n[Command succeeded with exit code 0]",
+                        tool_call_id="c1", name="execute", id="t1",
+                    ),
+                    {},
+                ),
+            )
+            yield (
+                "updates",
+                {
+                    "tools": {
+                        "messages": [
+                            ToolMessage(
+                                content="file1\nfile2\n\n[Command succeeded with exit code 0]",
+                                tool_call_id="c1", name="execute", id="t1",
+                            )
+                        ]
+                    }
+                },
+            )
+            yield ("messages", (AIMessageChunk(content="Done", id="m2"), {}))
+            yield ("updates", {"model": {"messages": [AIMessage(content="Done", id="m2")]}})
+
+    events = list(stream_events(NodeOutputAgent(), "q", "t"))
+    kinds = [e["type"] for e in events]
+    assert kinds == ["commentary", "command", "output", "status", "final"], kinds
+    assert events[0]["text"] == "Let me run a command."
+    assert events[2]["text"] == "file1\nfile2"
+    commentary = "".join(e["text"] for e in events if e["type"] == "commentary")
+    assert "file1" not in commentary
+
+
+def test_echoed_tool_result_suppressed_from_commentary():
+    """Some models copy tool results verbatim into message content; that
+    echo must not render as commentary (it duplicates the expander)."""
+
+    class EchoAgent:
+        def stream(self, _input, config=None, stream_mode=None):
+            yield (
+                "updates",
+                {
+                    "model": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                id="m1",
+                                tool_calls=[
+                                    {"name": "execute", "args": {"command": "ls"},
+                                     "id": "c1", "type": "tool_call"},
+                                ],
+                            )
+                        ]
+                    }
+                },
+            )
+            yield (
+                "updates",
+                {
+                    "tools": {
+                        "messages": [
+                            ToolMessage(
+                                content=(
+                                    "shape: (438, 8)\nproducts: ['Gadgets', 'Gizmos']"
+                                    "\n\n[Command succeeded with exit code 0]"
+                                ),
+                                tool_call_id="c1", name="execute",
+                            )
+                        ]
+                    }
+                },
+            )
+            # Model echoes the tool result verbatim in its next message
+            yield (
+                "messages",
+                (
+                    AIMessageChunk(
+                        content=(
+                            "shape: (438, 8) products: ['Gadgets', 'Gizmos'] "
+                            "[Command succeeded with exit code 0]"
+                        ),
+                        id="m2",
+                    ),
+                    {},
+                ),
+            )
+            yield ("updates", {"model": {"messages": [AIMessage(content="done", id="m2")]}})
+
+    events = list(stream_events(EchoAgent(), "q", "t"))
+    kinds = [e["type"] for e in events]
+    assert kinds == ["command", "output", "status", "final"], kinds

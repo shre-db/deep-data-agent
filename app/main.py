@@ -72,7 +72,11 @@ def ask_question(
     rel_artifacts = artifacts_dir.relative_to(PROJECT_ROOT)
     user_message = (
         f"The dataset is mounted at '{rel_data_path}'.\n"
-        f"Save all artifacts (scripts, tables, plots) under '{rel_artifacts}/'.\n"
+        f"Save all artifacts (scripts, tables, plots) under "
+        f"'{rel_artifacts}/'.\n"
+        "Note: file-tool results report paths with a leading '/' (virtual "
+        "root = the project root). In shell commands use the same path "
+        "WITHOUT the leading slash, e.g. 'artifacts/x.py', not '/artifacts/x.py'.\n"
         f"Answer this question about it:\n\n{question}\n\n"
         "Remember: inspect the dataset, plan, compute with code (never guess "
         "numbers), validate, and end with the required markdown output format."

@@ -343,6 +343,9 @@ def main() -> None:
         f"The dataset is mounted at '{rel_data_path}'.\n"
         f"Save all artifacts (scripts, tables, plots) under "
         f"'{artifacts_dir.relative_to(PROJECT_ROOT)}/'.\n"
+        "Note: file-tool results report paths with a leading '/' (virtual "
+        "root = the project root). In shell commands use the same path "
+        "WITHOUT the leading slash, e.g. 'artifacts/x.py', not '/artifacts/x.py'.\n"
         f"Answer this question about it:\n\n{question}\n\n"
         "Remember: inspect the dataset, plan, compute with code (never guess "
         "numbers), validate, and end with the required markdown output format."
@@ -376,8 +379,20 @@ def main() -> None:
                     render_step(step)
             status.update(label="Analysis trace", state="complete", expanded=False)
         except Exception as e:  # noqa: BLE001
+            import traceback
+
+            traceback.print_exc()  # server log: full traceback
             status.update(label="Analysis failed", state="error", expanded=True)
             st.error(f"Agent error: {e}")
+            # Persist the partial turn so the trace is not lost.
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": final or "(analysis stopped before completion)",
+                    "trace": trace,
+                    "artifacts": [],
+                }
+            )
             return
 
         st.markdown(final or "(no answer produced)")
