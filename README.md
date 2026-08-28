@@ -160,7 +160,8 @@ artifacts/       # runtime-generated scripts, tables, plots, per thread (gitigno
 .checkpoints/    # SQLite conversation memory per thread (gitignored)
 tests/           # smoke tests (no LLM calls)
 scripts/         # sample data generator
-docs/            # requirements + release notes
+docs/            # requirements document
+RELEASE.md       # release notes (newest first)
 ```
 
 ## Testing
