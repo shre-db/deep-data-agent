@@ -3,7 +3,7 @@
 import pandas as pd
 import plotly.io as pio
 
-from app.agent_tools.charts import LIGHT_CATEGORICAL, bar, line, scatter
+from app.agent_tools.charts import LIGHT_CATEGORICAL, _FONT, bar, line, scatter
 
 
 def test_bar_saves_parseable_figure(tmp_path):
@@ -44,6 +44,13 @@ def test_style_fits_axis_titles_in_frame():
     assert fig.layout.margin.b == 52  # xaxis title present
     assert fig.layout.margin.l == 64  # yaxis title present
     assert fig.layout.margin.t == 44  # chart title, no legend
+
+
+def test_figures_use_inter_font():
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    fig = bar(df, x="x", y="y", title="T")
+    assert fig.layout.font.family == _FONT
+    assert fig.layout.hoverlabel.font.family == _FONT
 
 
 def test_style_moves_legend_horizontal_when_present():

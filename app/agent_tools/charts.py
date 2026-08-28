@@ -59,7 +59,7 @@ DARK_CHROME = {
     "baseline": "#383835",
 }
 
-_FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+_FONT = "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 
 def _style(fig: go.Figure, title: str, chrome: dict) -> go.Figure:

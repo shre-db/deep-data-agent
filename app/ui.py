@@ -208,33 +208,33 @@ def group_trace(events: list[dict]) -> list[dict]:
 
 def render_command_step(step: dict) -> None:
     command = step["command"]
-    with st.expander(f"Ran: {_one_line(command)}"):
+    with st.expander(f"Ran: `{_mono_inline(_one_line(command))}`"):
         st.code(command, language="bash")
         if step["output"]:
             st.code(step["output"])
         # Full stderr (tracebacks included) stays inside the sub-container,
         # whether the command succeeded or failed.
         if step["error"]:
-            st.error(protect_currency(step["error"]))
+            st.error(_mono_block(protect_currency(step["error"])))
         if step["status"]:
-            _caption(f"exit {step['status']['code']} - "
-                     f"{'succeeded' if step['status']['ok'] else 'failed'}")
+            _mono_caption(f"exit {step['status']['code']} - "
+                          f"{'succeeded' if step['status']['ok'] else 'failed'}")
 
 
 def render_tool_step(step: dict) -> None:
     label = _tool_label(step["name"], step["args"])
     with st.expander(label):
         if step["result"]:
-            _caption(step["result"])
+            _mono_caption(step["result"])
         else:
-            _caption(f"{step['name']}({_one_line(step['args'], 80)})")
+            _mono_caption(f"{step['name']}({_one_line(step['args'], 80)})")
 
 
 def render_step(step: dict) -> None:
     if step["kind"] == "note":
         if step.get("orphan"):
             with st.expander("Output"):
-                _caption(step["text"])
+                st.code(step["text"])
         else:
             _caption(step["text"])
     elif step["kind"] == "command":
@@ -261,6 +261,48 @@ def _md(text: str) -> None:
 def _caption(text: str) -> None:
     """Render a caption with currency signs protected from LaTeX parsing."""
     st.caption(protect_currency(text))
+
+
+def _mono_inline(text: str) -> str:
+    """Escape backticks so `text` can sit inside a markdown code span."""
+    return text.replace("`", r"\`")
+
+
+def _mono_caption(text: str) -> None:
+    """Caption rendered as inline code (JetBrains Mono via the code CSS).
+
+    Code-span content is literal, so no currency protection is needed
+    (escaping would show a stray backslash).
+    """
+    st.caption(f"`{_mono_inline(text)}`")
+
+
+def _mono_block(text: str) -> str:
+    """Wrap text in a markdown code fence, growing the fence if the text
+    itself contains one."""
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"{fence}\n{text}\n{fence}"
+
+
+_MONO_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400..600&display=swap');
+code, pre {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+}
+</style>
+"""
+
+
+def _inject_fonts() -> None:
+    """Load JetBrains Mono and apply it to all code elements.
+
+    Base text is themed to Inter via .streamlit/config.toml; Streamlit has
+    no code-font theme option, so code needs this small style block.
+    """
+    st.html(_MONO_CSS)
 
 
 def render_answer(content: str, artifacts: list[Path]) -> set[Path]:
@@ -297,7 +339,7 @@ def _render_table(path: Path) -> None:
         try:
             st.dataframe(pd.read_csv(path))
         except Exception as e:  # noqa: BLE001
-            _caption(f"Could not preview {path.name}: {e}")
+            _mono_caption(f"Could not preview {path.name}: {e}")
 
 
 def _render_plotly_figure(path: Path) -> None:
@@ -384,6 +426,7 @@ def render_assistant_turn(msg: dict) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="deep-data-agent", page_icon=None, layout="centered")
+    _inject_fonts()
     st.title("deep-data-agent")
     st.caption("Ask questions about a CSV dataset; the agent plans, runs pandas "
                "code, and reports evidence-backed results.")
