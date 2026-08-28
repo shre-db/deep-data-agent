@@ -1,0 +1,417 @@
+<title>The Analyst on Staff</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #f6f7f9;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --secondary: #52514e;
+    --muted: #898781;
+    --hairline: rgba(11, 11, 11, 0.12);
+    --accent: #2a78d6;
+    --warm: #eb6834;
+    --aqua: #1baf7a;
+    --green: #008300;
+    --code-bg: rgba(11, 11, 11, 0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #121317;
+      --surface: #1a1a19;
+      --ink: #f2f3f5;
+      --secondary: #c3c2b7;
+      --muted: #898781;
+      --hairline: rgba(255, 255, 255, 0.12);
+      --accent: #3987e5;
+      --warm: #d95926;
+      --aqua: #199e70;
+      --green: #0ca30c;
+      --code-bg: rgba(255, 255, 255, 0.06);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #121317;
+    --surface: #1a1a19;
+    --ink: #f2f3f5;
+    --secondary: #c3c2b7;
+    --muted: #898781;
+    --hairline: rgba(255, 255, 255, 0.12);
+    --accent: #3987e5;
+    --warm: #d95926;
+    --aqua: #199e70;
+    --green: #0ca30c;
+    --code-bg: rgba(255, 255, 255, 0.06);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 920px; margin: 0 auto; padding: 72px 32px 96px; }
+
+  .eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    font-size: 2.4rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 12px 0 20px;
+    text-wrap: balance;
+  }
+  .lead {
+    font-size: 1.13rem;
+    line-height: 1.6;
+    color: var(--secondary);
+    max-width: 68ch;
+    margin: 0 0 40px;
+  }
+  .status-line {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 0 0 72px;
+  }
+  .chip {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.72rem;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    padding: 3px 12px;
+    color: var(--secondary);
+    background: var(--surface);
+  }
+
+  section { margin: 0 0 72px; }
+  h2 {
+    font-size: 1.28rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  .section-note { color: var(--muted); font-size: 0.9rem; margin: 0 0 20px; }
+  section p { max-width: 68ch; }
+  section p + p { margin-top: 0; }
+
+  /* The core loop */
+  .loop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 10px;
+    margin: 28px 0 14px;
+  }
+  .node {
+    flex: 1 1 130px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 14px 14px 12px;
+    border-top: 3px solid var(--accent);
+  }
+  .node .n-label {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+    font-weight: 500;
+    margin: 0 0 4px;
+  }
+  .node .n-sub { font-size: 0.78rem; color: var(--muted); margin: 0; line-height: 1.45; }
+  .node[data-c="data"] { border-top-color: var(--accent); }
+  .node[data-c="core"] { border-top-color: var(--warm); }
+  .node[data-c="run"] { border-top-color: var(--aqua); }
+  .node[data-c="deliver"] { border-top-color: var(--accent); }
+  .node[data-c="audience"] { border-top-color: var(--ink); }
+  .node[data-c="feedback"] { border-top-color: var(--muted); }
+  .node[data-c="memory"] { border-top-color: var(--green); }
+  .arrow {
+    align-self: center;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    color: var(--muted);
+    flex: 0 0 auto;
+  }
+  .return-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .return-note {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-left: auto;
+  }
+  .loop-caption { color: var(--muted); font-size: 0.9rem; max-width: 68ch; margin-top: 16px; }
+
+  /* Principles */
+  .principles { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 24px 0 0; }
+  .principle {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .principle .p-num {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+    color: var(--accent);
+    margin: 0 0 6px;
+  }
+  .principle h3 { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px; }
+  .principle p { font-size: 0.88rem; color: var(--secondary); margin: 0; line-height: 1.55; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; margin: 20px 0 8px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  td code, p code, li code {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.82em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  td.mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.8rem; }
+  td.state { color: var(--muted); }
+  td.state.done { color: var(--aqua); }
+  .m-chip {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    padding: 1px 9px;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  /* Scenario steps */
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 20px 0 0; max-width: 72ch; }
+  ol.steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 0 0 22px 46px;
+    border-left: 1px solid var(--hairline);
+    margin-left: 14px;
+  }
+  ol.steps li:last-child { border-left: 1px solid transparent; padding-bottom: 0; }
+  ol.steps li::before {
+    content: counter(step, decimal-leading-zero);
+    position: absolute;
+    left: -16px;
+    top: -2px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    color: var(--accent);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.68rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  ol.steps b { font-weight: 600; }
+  ol.steps .t { color: var(--muted); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.72rem; display: block; margin-bottom: 2px; }
+
+  .risks { max-width: 68ch; }
+  .risks li { margin-bottom: 10px; }
+  .risks b { font-weight: 600; }
+
+  footer {
+    margin-top: 96px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+    color: var(--muted);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.72rem;
+  }
+
+  @media (max-width: 720px) {
+    .page { padding: 48px 20px 64px; }
+    h1 { font-size: 1.9rem; }
+    .principles { grid-template-columns: 1fr; }
+    .return-note { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="page">
+
+  <header>
+    <div class="eyebrow">deep-data-agent &middot; design doc &middot; draft</div>
+    <h1>The Analyst on Staff</h1>
+    <p class="lead">Evolving the deep-data-agent from a chat window into an autonomous data analyst: it monitors data on a schedule, knows the business's definitions and history, runs validated pipelines, and delivers briefings and actions to the right people &mdash; with the chat demoted to the console where runs are inspected and briefings are reviewed before they go out.</p>
+    <div class="status-line">
+      <span class="chip">status: draft for discussion</span>
+      <span class="chip">scope: post-prototype</span>
+      <span class="chip">source: docs/analyst_on_staff.md</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>Thesis</h2>
+    <p class="section-note">The unit of value is not the answer &mdash; it is the closed loop.</p>
+    <div class="loop">
+      <div class="node" data-c="data">
+        <p class="n-label">data</p>
+        <p class="n-sub">connectors + freshness checks</p>
+      </div>
+      <span class="arrow">&rarr;</span>
+      <div class="node" data-c="core">
+        <p class="n-label">analyst core</p>
+        <p class="n-sub">plans, computes, validates, narrates</p>
+      </div>
+      <span class="arrow">&rarr;</span>
+      <div class="node" data-c="run">
+        <p class="n-label">validated run</p>
+        <p class="n-sub">vetted scripts + lineage</p>
+      </div>
+      <span class="arrow">&rarr;</span>
+      <div class="node" data-c="deliver">
+        <p class="n-label">deliverable</p>
+        <p class="n-sub">briefing per audience</p>
+      </div>
+      <span class="arrow">&rarr;</span>
+      <div class="node" data-c="audience">
+        <p class="n-label">audience</p>
+        <p class="n-sub">profile: role, expertise, channel</p>
+      </div>
+    </div>
+    <div class="return-row">
+      <div class="node" data-c="feedback" style="flex: 1 1 130px; max-width: 210px;">
+        <p class="n-label">feedback</p>
+        <p class="n-sub">corrections + ratings</p>
+      </div>
+      <span class="arrow">&rarr;</span>
+      <div class="node" data-c="memory" style="flex: 1 1 130px; max-width: 210px;">
+        <p class="n-label">memory</p>
+        <p class="n-sub">definitions, baselines, decisions</p>
+      </div>
+      <span class="return-note">&#8593; feeds every future run</span>
+    </div>
+    <p class="loop-caption">The chat window is demoted but not discarded: it becomes the console &mdash; the place where runs are inspected, definitions are corrected, and briefings are reviewed before they go out.</p>
+  </section>
+
+  <section>
+    <h2>Design principles</h2>
+    <p class="section-note">Six rules, ordered by how much trust each buys.</p>
+    <div class="principles">
+      <div class="principle"><p class="p-num">01</p><h3>Deterministic plumbing, LLM brains</h3><p>Scheduling, connectors, storage, and delivery are plain code. The model interprets and narrates; it never sits in the correctness-critical path of computing a number.</p></div>
+      <div class="principle"><p class="p-num">02</p><h3>Analyses as code</h3><p>Every repeatable analysis is a versioned, vetted script. Edits are reviewed; re-runs diff against history. A churn number is computed by an approved pipeline, not regenerated each morning.</p></div>
+      <div class="principle"><p class="p-num">03</p><h3>Lineage everywhere</h3><p>Every number in a deliverable cites its dataset, script version, and run. No orphan statistics.</p></div>
+      <div class="principle"><p class="p-num">04</p><h3>Audience is a rendering policy</h3><p>Expertise level is a property of the deliverable, not something inferred from conversation. One analysis, N renderings.</p></div>
+      <div class="principle"><p class="p-num">05</p><h3>Feedback is memory</h3><p>Verbal reinforcement learning in the pragmatic sense: corrections and ratings become definition updates and few-shot context &mdash; inspectable, no fine-tuning.</p></div>
+      <div class="principle"><p class="p-num">06</p><h3>Actions are gated</h3><p>Creating tickets and sending alerts start behind human approval. Acting on someone's behalf carries a higher trust bar than informing them.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Architecture</h2>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Component</th><th>Responsibility</th><th>State today</th></tr>
+        <tr><td>Connectors</td><td>Ingest datasets, check freshness</td><td class="state">CSV files, ad hoc</td></tr>
+        <tr><td>Knowledge layer</td><td>Business definitions, baselines, feedback log</td><td class="state">Thread-scoped only</td></tr>
+        <tr><td>Analyst core</td><td>Deep Agent: plan &rarr; compute &rarr; validate &rarr; narrate</td><td class="state done">exists &middot; <code>app/agent.py</code></td></tr>
+        <tr><td>Scheduler</td><td>Daily/weekly runs, each run = one thread</td><td class="state">Manual chat only</td></tr>
+        <tr><td>Run store</td><td>Artifacts + lineage sidecars, versioned</td><td class="state">Artifacts per thread</td></tr>
+        <tr><td>Delivery</td><td>Render briefings per audience; Slack/email</td><td class="state">Chat rendering only</td></tr>
+        <tr><td>Action layer</td><td>Investigation tasks, alerts with severity + approval</td><td class="state">None</td></tr>
+        <tr><td>Console</td><td>Inspect runs, correct definitions, review briefings</td><td class="state done">exists &middot; <code>app/ui.py</code></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Data model</h2>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Entity</th><th>Key fields</th><th>Notes</th></tr>
+        <tr><td class="mono">business_definition</td><td class="mono">name, definition, owner, version, supersedes</td><td>&ldquo;When I say churn, I mean X.&rdquo; Versioned; corrections append, never silently overwrite.</td></tr>
+        <tr><td class="mono">audience_profile</td><td class="mono">person, role, expertise, channel, preferences</td><td>Asked once per recipient, stored.</td></tr>
+        <tr><td class="mono">run</td><td class="mono">id, trigger, status, lineage refs</td><td>A thread + its metadata.</td></tr>
+        <tr><td class="mono">artifact</td><td class="mono">path, kind, source_data_hash, script_version, run_id</td><td>The lineage sidecar.</td></tr>
+        <tr><td class="mono">briefing</td><td class="mono">run_id, audience, rendered content, delivery status</td><td>One run renders N briefings.</td></tr>
+        <tr><td class="mono">feedback</td><td class="mono">briefing_id, kind, text</td><td>Corrections may spawn definition updates.</td></tr>
+        <tr><td class="mono">task</td><td class="mono">created_from, assignee, severity, status</td><td>The action layer's output.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Canonical scenario &mdash; the morning briefing</h2>
+    <p class="section-note">The reference story: what &ldquo;on the user's behalf&rdquo; concretely means.</p>
+    <ol class="steps">
+      <li><span class="t">07:00 &middot; trigger</span><b>The scheduler starts the daily run</b> &mdash; product, billing, and CRM data, each freshness-checked.</li>
+      <li><span class="t">analyst core</span><b>The vetted pipelines run</b> for activation, retention, and revenue; outputs diff against historical baselines.</li>
+      <li><span class="t">anomaly</span><b>Retention in the SMB segment shows an accelerating decline.</b> The deterministic baseline flags it; the model attributes likely causes: a billing API error spike and Tuesday's pricing change.</li>
+      <li><span class="t">validation</span>Cross-check tests pass; <b>lineage is attached to every cited number</b>.</li>
+      <li><span class="t">rendering</span><b>The briefing renders at two altitudes</b> &mdash; a five-minute narrative for the VP Product (one chart per finding, decisions needed) and a full version for the analyst (methodology, caveats, scripts).</li>
+      <li><span class="t">delivery</span>The VP's briefing lands in Slack behind a review gate; the analyst's version lands in their inbox.</li>
+      <li><span class="t">escalation</span><b>Churn severity crosses threshold:</b> the system proposes an investigation task &mdash; assignee, severity, lineage links &mdash; for human approval.</li>
+      <li><span class="t">feedback</span>The VP replies <b>&ldquo;by churn I meant paid-only accounts.&rdquo;</b> The correction becomes a new version of the <code>churn</code> definition, and tomorrow's run uses it.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Roadmap</h2>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Milestone</th><th>Scope</th><th>Success criteria</th></tr>
+        <tr><td><span class="m-chip">M0</span> Chat prototype</td><td>Today's app</td><td class="state done">done</td></tr>
+        <tr><td><span class="m-chip">M1</span> Briefing + knowledge</td><td>Briefing run type, definitions store, audience profiles</td><td>One daily briefing renders at two altitudes from stored definitions</td></tr>
+        <tr><td><span class="m-chip">M2</span> Schedule + delivery</td><td>Scheduler, Slack/email renderer, human review gate</td><td>Briefings arrive without opening the app; console used for review</td></tr>
+        <tr><td><span class="m-chip">M3</span> Anomaly baselines</td><td>Deterministic stats (seasonality, z-scores) feeding findings</td><td>Anomalies cited against historical patterns with confidence</td></tr>
+        <tr><td><span class="m-chip">M4</span> Action layer</td><td>Investigation tasks, severity routing, approval flows</td><td>Escalation creates a tracked task with a lineage link</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Today's codebase, tomorrow's components</h2>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Now</th><th>Becomes</th></tr>
+        <tr><td class="mono">app/agent.py</td><td>Deep Agent + shell backend + the <code>analysis.py</code> overwrite pattern &rarr; the analyst core and the seed of analyses-as-code.</td></tr>
+        <tr><td class="mono">app/events.py</td><td>The structured event trace &rarr; the run record briefings render from.</td></tr>
+        <tr><td class="mono">app/agent_tools/charts.py</td><td>The standardized chart language &rarr; the visual layer of briefings.</td></tr>
+        <tr><td class="mono">app/prompts.py</td><td>The answer framework &rarr; the analyst's job description; audience profile and definitions become injected context.</td></tr>
+        <tr><td class="mono">checkpointer + artifacts/</td><td>The run store; lineage arrives as metadata sidecars per artifact.</td></tr>
+        <tr><td class="mono">app/ui.py</td><td>The console: inspect runs, correct definitions, review before send.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Open questions and risks</h2>
+    <ul class="risks">
+      <li><b>Model trust for autonomy.</b> Flash-tier models on free endpoints narrate well; are they trustworthy enough for unattended briefing? Mitigation: deterministic computation, cross-check tests, the M2 review gate.</li>
+      <li><b>Evaluation.</b> &ldquo;Is this briefing good?&rdquo; needs its own harness &mdash; lineage completeness, number cross-checks, and a human rating signal from feedback.</li>
+      <li><b>Data privacy.</b> Product, billing, and CRM data raises the stakes: local-first execution, secrets management, per-connector access scoping before production use.</li>
+      <li><b>Feedback fidelity.</b> Verbal corrections must be structured before they change definitions; free-text feedback is logged first, applied only when it survives review.</li>
+      <li><b>Cost and latency.</b> Scheduled runs on hosted endpoints need budgets and timeouts; the pipeline should degrade to &ldquo;no briefing, with a reason&rdquo; rather than a wrong briefing.</li>
+    </ul>
+  </section>
+
+  <footer>deep-data-agent &middot; the analyst on staff &middot; design doc &middot; draft for discussion &middot; canonical source: docs/analyst_on_staff.md</footer>
+</div>

@@ -56,7 +56,13 @@ def build_model(model_spec: str | None = None):
         )
     from langchain_openai import ChatOpenAI
 
-    kwargs = {"model": model_name, "api_key": api_key}
+    kwargs = {
+        "model": model_name,
+        "api_key": api_key,
+        # Long agent turns hit transient TLS/connection drops on hosted
+        # endpoints; retry a few times before giving up.
+        "max_retries": int(os.environ.get("LLM_MAX_RETRIES", "4")),
+    }
     if cfg["base_url"]:
         kwargs["base_url"] = cfg["base_url"]
     # Cap max_tokens so constrained/free provider tiers with small credit
@@ -102,6 +108,9 @@ def _build_backend() -> LocalShellBackend:
     venv_bin = Path(sys.executable).parent
     env = {
         "PATH": f"{venv_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+        # Make repo modules (e.g. app.agent_tools.charts) importable from
+        # scripts the agent writes and runs anywhere under the project root.
+        "PYTHONPATH": str(PROJECT_ROOT),
         "HOME": "/tmp",
         "MPLBACKEND": "Agg",
         "MPLCONFIGDIR": "/tmp/mplconfig",

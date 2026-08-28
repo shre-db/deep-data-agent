@@ -1,0 +1,6 @@
+[theme]
+# Base UI font (headings inherit). Code blocks are styled separately via a
+# small CSS block in app/ui.py (JetBrains Mono); there is no code-font
+# theme option. The URL loads Inter from Google Fonts; the fallback list
+# covers offline use.
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400..700;1,400..700&display=swap, sans-serif"
