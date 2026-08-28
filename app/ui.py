@@ -252,10 +252,72 @@ def render_trace(events: list[dict]) -> None:
     render_steps(group_trace(events))
 
 
+def _render_plotly_figure(path: Path) -> None:
+    """Render a figure JSON saved by the sandbox chart helpers.
+
+    Re-tints chrome and categorical colors for the active app theme; falls
+    back to a plain file caption when the JSON does not parse as a figure.
+    """
+    import plotly.io as pio
+
+    from app.agent_tools.charts import (
+        DARK_CATEGORICAL,
+        DARK_CHROME,
+        LIGHT_CATEGORICAL,
+        LIGHT_CHROME,
+    )
+
+    try:
+        fig = pio.from_json(path.read_text())
+    except Exception:  # noqa: BLE001
+        st.caption(_artifact_label(path))
+        return
+
+    try:
+        dark = st.context.theme.get("base") == "dark"
+    except Exception:  # noqa: BLE001
+        dark = False
+    mapping = dict(zip(LIGHT_CATEGORICAL, DARK_CATEGORICAL)) if dark else {}
+    chrome = DARK_CHROME if dark else LIGHT_CHROME
+
+    def _tint(value):
+        if isinstance(value, str):
+            return mapping.get(value, value)
+        if isinstance(value, (list, tuple)):
+            return [_tint(v) for v in value]
+        return value
+
+    for trace in fig.data:
+        for attr in ("marker", "line"):
+            obj = getattr(trace, attr, None)
+            if obj is not None and getattr(obj, "color", None) is not None:
+                obj.color = _tint(obj.color)
+
+    updates = {
+        "font_color": chrome["muted"],
+        "legend_font_color": chrome["secondary"],
+        "xaxis_gridcolor": chrome["gridline"],
+        "yaxis_gridcolor": chrome["gridline"],
+        "xaxis_zerolinecolor": chrome["baseline"],
+        "yaxis_zerolinecolor": chrome["baseline"],
+        "xaxis_linecolor": chrome["baseline"],
+        "yaxis_linecolor": chrome["baseline"],
+    }
+    if fig.layout.title and fig.layout.title.text:
+        updates["title_font_color"] = chrome["primary"]
+    fig.update_layout(**updates)
+    # theme=None keeps the figure's own template and palette; the 'streamlit'
+    # theme would overwrite the categorical colors baked into the figure.
+    st.plotly_chart(fig, theme=None)
+
+
 def render_artifacts(paths: list[Path]) -> None:
+    figures = [p for p in paths if p.suffix.lower() == ".json"]
     pngs = [p for p in paths if p.suffix.lower() == ".png"]
     tables = [p for p in paths if p.suffix.lower() == ".csv"]
-    other = [p for p in paths if p not in pngs and p not in tables]
+    other = [p for p in paths if p not in figures and p not in pngs and p not in tables]
+    for p in figures:
+        _render_plotly_figure(p)
     for p in pngs:
         st.image(str(p))
     for p in tables:

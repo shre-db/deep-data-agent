@@ -108,6 +108,9 @@ def _build_backend() -> LocalShellBackend:
     venv_bin = Path(sys.executable).parent
     env = {
         "PATH": f"{venv_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+        # Make repo modules (e.g. app.agent_tools.charts) importable from
+        # scripts the agent writes and runs anywhere under the project root.
+        "PYTHONPATH": str(PROJECT_ROOT),
         "HOME": "/tmp",
         "MPLBACKEND": "Agg",
         "MPLCONFIGDIR": "/tmp/mplconfig",
