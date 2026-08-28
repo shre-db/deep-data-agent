@@ -332,6 +332,8 @@ def render_answer(content: str, artifacts: list[Path]) -> set[Path]:
                 st.image(str(path))
             elif path.suffix.lower() == ".csv":
                 _render_table(path)
+            elif path.suffix.lower() in _CODE_SUFFIXES:
+                _render_code_file(path)
             else:
                 _caption(_artifact_label(path))
             if payload["caption"]:
@@ -346,6 +348,20 @@ def _render_table(path: Path) -> None:
             st.dataframe(pd.read_csv(path))
         except Exception as e:  # noqa: BLE001
             _mono_caption(f"Could not preview {path.name}: {e}")
+
+
+# Code files render their contents; everything else stays a path caption.
+_CODE_SUFFIXES = {".py": "python", ".sql": "sql", ".sh": "bash"}
+MAX_CODE_CHARS = 20_000
+
+
+def _render_code_file(path: Path) -> None:
+    """Render a code artifact's contents inside a collapsed expander."""
+    with st.expander(path.name):
+        text = path.read_text(errors="replace")
+        if len(text) > MAX_CODE_CHARS:
+            text = text[:MAX_CODE_CHARS] + "\n... [truncated]"
+        st.code(text, language=_CODE_SUFFIXES.get(path.suffix.lower()))
 
 
 def _render_plotly_figure(path: Path) -> None:
@@ -414,7 +430,9 @@ def render_artifacts(paths: list[Path]) -> None:
     figures = [p for p in paths if p.suffix.lower() == ".json"]
     pngs = [p for p in paths if p.suffix.lower() == ".png"]
     tables = [p for p in paths if p.suffix.lower() == ".csv"]
-    other = [p for p in paths if p not in figures and p not in pngs and p not in tables]
+    code = [p for p in paths if p.suffix.lower() in _CODE_SUFFIXES]
+    shown = set(figures) | set(pngs) | set(tables) | set(code)
+    other = [p for p in paths if p not in shown]
     with st.expander(f"Artifacts ({len(paths)})"):
         for p in figures:
             _render_plotly_figure(p)
@@ -422,6 +440,8 @@ def render_artifacts(paths: list[Path]) -> None:
             st.image(str(p))
         for p in tables:
             _render_table(p)
+        for p in code:
+            _render_code_file(p)
         for p in other:
             _mono_caption(_artifact_label(p))
 
