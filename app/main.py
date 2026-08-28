@@ -21,16 +21,28 @@ def thread_artifacts_dir(thread_id: str) -> Path:
 
 
 def run_agent(agent, user_message: str, thread_id: str) -> str:
-    """Run the agent, printing its trace (tool calls, results, text) live."""
+    """Run the agent, printing its trace (commands, output, errors) live."""
     final_content = ""
     for event in stream_events(agent, user_message, thread_id):
-        if event["type"] == "text_delta":
-            print(event["text"], end="", flush=True)
-        elif event["type"] == "tool_call":
+        kind = event["type"]
+        if kind == "commentary":
+            print(f"\n{event['text']}\n")
+        elif kind == "command":
+            print(f"$ {event['text']}")
+        elif kind == "output":
+            for line in event["text"].splitlines():
+                print(f"  {line}")
+        elif kind == "error":
+            for line in event["text"].splitlines():
+                print(f"  ! {line}")
+        elif kind == "status":
+            mark = "ok" if event["ok"] else "FAILED"
+            print(f"  [{mark} exit {event['code']}]")
+        elif kind == "tool_call":
             print(f"  [tool call] {event['name']}({event['args']})")
-        elif event["type"] == "tool_result":
+        elif kind == "tool_result":
             print(f"  [tool result] {event['text']}")
-        elif event["type"] == "final":
+        elif kind == "final":
             final_content = event["text"]
     return final_content
 

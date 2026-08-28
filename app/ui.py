@@ -3,21 +3,19 @@
 Run with: uv run streamlit run app/ui.py
 """
 
-import re
 import uuid
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 from dotenv import dotenv_values
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent import PROJECT_ROOT, build_checkpointer, create_analysis_agent
-from app.events import _shorten, stream_events
+from app.events import classify_messages, stream_events
 from app.main import thread_artifacts_dir
-
-st.set_page_config(page_title="deep-data-agent", page_icon=None, layout="centered")
 
 
 @st.cache_resource
@@ -59,28 +57,14 @@ def load_thread_history(agent, thread_id: str) -> list[dict] | None:
                 {"role": "user", "content": _extract_question(str(m.content)),
                  "trace": [], "artifacts": []}
             )
-        elif isinstance(m, AIMessage) and m.tool_calls:
-            for call in m.tool_calls:
-                trace.append(
-                    {
-                        "type": "tool_call",
-                        "name": call["name"],
-                        "args": _shorten(call.get("args"), 200),
-                    }
-                )
-        elif isinstance(m, ToolMessage):
-            text = m.content
-            if isinstance(text, list):
-                text = " ".join(
-                    b.get("text", "") if isinstance(b, dict) else str(b) for b in text
-                )
-            trace.append({"type": "tool_result", "text": _shorten(text, 400)})
-        elif isinstance(m, AIMessage) and m.content:
+        elif isinstance(m, AIMessage) and m.content and not m.tool_calls:
             turns.append(
                 {"role": "assistant", "content": m.content,
                  "trace": list(trace), "artifacts": []}
             )
             trace = []
+        else:
+            trace.extend(classify_messages([m]))
 
     if turns and turns[-1]["role"] == "assistant":
         artifacts_dir = thread_artifacts_dir(thread_id)
@@ -97,24 +81,74 @@ def _artifact_label(path: Path) -> str:
         return path.name
 
 
+TRACE_CSS = """
+<style>
+    div[data-testid="stStatusWidget"] .stMarkdown { font-size: 0.85rem; }
+    .trace-note {
+        color: #6b7280; font-style: italic; background: #f5f6f8;
+        border-radius: 10px; padding: 8px 12px; margin: 2px 0;
+    }
+    .trace-out {
+        background: #f5f6f8; border-radius: 10px; padding: 8px 12px;
+        margin: 2px 0; font-size: 0.78rem; line-height: 1.35;
+        color: #374151; white-space: pre-wrap; word-break: break-word;
+        max-height: 260px; overflow-y: auto;
+    }
+    .trace-err {
+        background: #fdecec; border-left: 3px solid #d9534f;
+        border-radius: 8px; padding: 8px 12px; margin: 2px 0;
+        font-size: 0.78rem; line-height: 1.35; color: #8c2f2b;
+        white-space: pre-wrap; word-break: break-word;
+        max-height: 260px; overflow-y: auto;
+    }
+    .trace-ok { color: #2e7d32; font-size: 0.78rem; margin: 2px 0 8px 0; }
+    .trace-fail { color: #c62828; font-size: 0.78rem; margin: 2px 0 8px 0; }
+    .trace-tool { font-size: 0.85rem; margin: 6px 0 2px 0; }
+</style>
+"""
+
+
+def _styled(css_class: str, text: str) -> None:
+    st.markdown(
+        f'<div class="{css_class}">{escape(text)}</div>', unsafe_allow_html=True
+    )
+
+
+def render_event(event: dict) -> None:
+    """Render one trace event as a visually distinct block.
+
+    Used by both the live streaming loop and static history rendering so
+    the two always look identical.
+    """
+    kind = event["type"]
+    if kind == "commentary":
+        _styled("trace-note", event["text"])
+    elif kind == "command":
+        st.code(event["text"], language="bash")
+    elif kind == "output":
+        _styled("trace-out", event["text"])
+    elif kind == "error":
+        _styled("trace-err", event["text"])
+    elif kind == "status":
+        word = "succeeded" if event["ok"] else "failed"
+        css = "trace-ok" if event["ok"] else "trace-fail"
+        _styled(css, f"exit {event['code']} - {word}")
+    elif kind == "tool_call":
+        st.markdown(
+            f'<div class="trace-tool"><strong>{escape(event["name"])}</strong> '
+            f'<code>{escape(event["args"])}</code></div>',
+            unsafe_allow_html=True,
+        )
+    elif kind == "tool_result":
+        _styled("trace-note", event["text"])
+    elif kind == "final":
+        return
+
+
 def render_trace(events: list[dict]) -> None:
     """Render a completed event list inside the current container."""
-    commentary = ""
     for event in events:
-        if event["type"] == "text_delta":
-            commentary += event["text"]
-            continue
-        if commentary.strip():
-            st.markdown(commentary.strip())
-            commentary = ""
-        if event["type"] == "tool_call":
-            st.markdown(f"**{event['name']}** `{event['args']}`")
-        elif event["type"] == "tool_result":
-            st.caption(event["text"])
-        elif event["type"] == "final":
-            break
-    if commentary.strip():
-        st.markdown(commentary.strip())
+        render_event(event)
 
 
 def render_artifacts(paths: list[Path]) -> None:
@@ -141,6 +175,8 @@ def render_assistant_turn(msg: dict) -> None:
 
 
 def main() -> None:
+    st.set_page_config(page_title="deep-data-agent", page_icon=None, layout="centered")
+    st.markdown(TRACE_CSS, unsafe_allow_html=True)
     st.title("deep-data-agent")
     st.caption("Ask questions about a CSV dataset; the agent plans, runs pandas "
                "code, and reports evidence-backed results.")
@@ -216,31 +252,17 @@ def main() -> None:
 
     with st.chat_message("assistant"):
         status = st.status("Analyzing...", state="running", expanded=True)
-        commentary = ""
         trace: list[dict] = []
         final = ""
-
-        def flush_commentary() -> None:
-            nonlocal commentary
-            if commentary.strip():
-                status.markdown(commentary.strip())
-            commentary = ""
 
         try:
             with status:
                 for event in stream_events(agent, user_message, st.session_state.thread_id):
                     trace.append(event)
-                    if event["type"] == "text_delta":
-                        commentary += event["text"]
-                    elif event["type"] == "tool_call":
-                        flush_commentary()
-                        status.markdown(f"**{event['name']}** `{event['args']}`")
-                    elif event["type"] == "tool_result":
-                        flush_commentary()
-                        status.caption(event["text"])
-                    elif event["type"] == "final":
-                        flush_commentary()
+                    if event["type"] == "final":
                         final = event["text"]
+                    else:
+                        render_event(event)
             status.update(label="Analysis trace", state="complete", expanded=False)
         except Exception as e:  # noqa: BLE001
             status.update(label="Analysis failed", state="error", expanded=True)
