@@ -87,7 +87,8 @@ def test_group_preserves_order_and_notes():
 def test_orphan_output_becomes_note():
     events = [{"type": "output", "text": "stray"}]
     steps = group_trace(events)
-    assert steps == [{"kind": "note", "text": "stray"}]
+    # Orphan notes carry the flag so the UI renders them collapsed.
+    assert steps == [{"kind": "note", "text": "stray", "orphan": True}]
 
 
 def test_tool_labels():
@@ -159,8 +160,8 @@ def test_collector_flush_releases_unfinished_steps():
 def test_collector_orphan_result_becomes_note():
     events = [{"type": "tool_result", "text": "stray", "id": "zz"}]
     c, rendered = _collect(events)
-    assert rendered[0] == {"kind": "note", "text": "stray"}
-    assert c.steps == [{"kind": "note", "text": "stray"}]
+    assert rendered[0] == {"kind": "note", "text": "stray", "orphan": True}
+    assert c.steps == [{"kind": "note", "text": "stray", "orphan": True}]
 
 
 def test_collector_steps_hold_full_order():

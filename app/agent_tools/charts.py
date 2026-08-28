@@ -63,16 +63,40 @@ _FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 
 def _style(fig: go.Figure, title: str, chrome: dict) -> go.Figure:
-    """Apply the shared look: transparent surface, recessive axes, clean ink."""
+    """Apply the shared look: transparent surface, recessive axes, clean ink.
+
+    Margins are computed from what the figure contains so axis titles, tick
+    labels, and legends stay inside the frame; plotly.js's automargin
+    expands them further when tick labels need the room.
+    """
+    xaxis, yaxis = fig.layout.xaxis, fig.layout.yaxis
+    xaxis.automargin = True
+    yaxis.automargin = True
+    has_legend = fig.layout.showlegend is not False and len(fig.data) > 1
+    if has_legend:
+        fig.update_layout(
+            legend={
+                "orientation": "h",
+                "xanchor": "right",
+                "x": 1,
+                "yanchor": "bottom",
+                "y": 1.02,
+                "font": {"color": chrome["secondary"]},
+            }
+        )
     fig.update_layout(
         title={"text": title, "font": {"color": chrome["primary"], "size": 16}},
         template=None,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font={"family": _FONT, "color": chrome["muted"]},
-        legend={"font": {"color": chrome["secondary"]}},
         hoverlabel={"font": {"family": _FONT}},
-        margin={"l": 8, "r": 8, "t": 48 if title else 8, "b": 8},
+        margin={
+            "l": 64 if yaxis.title.text else 8,
+            "r": 8,
+            "t": (44 if title else 8) + (32 if has_legend else 0),
+            "b": 52 if xaxis.title.text else 8,
+        },
     )
     for axis in ("xaxis", "yaxis"):
         fig.layout[axis].gridcolor = chrome["gridline"]

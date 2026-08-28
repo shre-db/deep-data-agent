@@ -20,7 +20,16 @@ When writing files with your file tools, use relative paths from the project roo
 
 ## Output format
 
-Your final message must be markdown with exactly these sections:
+Your final message must be markdown with exactly these sections.
+
+When a figure supports a finding, place a reference line at the point in
+the answer where you discuss it, so the UI renders the chart inline at that
+spot (the alt text becomes a caption under the chart):
+
+![Revenue by channel](artifacts/<thread>/revenue_by_channel.json)
+
+Use the exact artifact path you saved the figure to (the artifacts
+directory is given in the user's message).
 
 ## Answer
 

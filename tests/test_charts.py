@@ -32,3 +32,22 @@ def test_multi_series_uses_fixed_categorical_order(tmp_path):
     line(df, x="x", y="y", color="g", path=tmp_path / "multi.json")
     fig = pio.from_json((tmp_path / "multi.json").read_text())
     assert [t.line.color for t in fig.data] == LIGHT_CATEGORICAL[:3]
+
+
+def test_style_fits_axis_titles_in_frame():
+    """px sets axis titles to column names by default; margins must make
+    room for them and automargin must handle tick labels."""
+    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    fig = bar(df, x="x", y="y", title="T")
+    assert fig.layout.xaxis.automargin is True
+    assert fig.layout.yaxis.automargin is True
+    assert fig.layout.margin.b == 52  # xaxis title present
+    assert fig.layout.margin.l == 64  # yaxis title present
+    assert fig.layout.margin.t == 44  # chart title, no legend
+
+
+def test_style_moves_legend_horizontal_when_present():
+    df = pd.DataFrame({"g": ["a", "b"], "x": [1, 2], "y": [3, 4]})
+    fig = bar(df, x="x", y="y", color="g", title="T")
+    assert fig.layout.legend.orientation == "h"
+    assert fig.layout.margin.t == 44 + 32  # title + legend room

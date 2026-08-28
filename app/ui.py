@@ -15,6 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent import PROJECT_ROOT, build_checkpointer, create_analysis_agent
 from app.events import classify_messages, stream_events
 from app.main import thread_artifacts_dir
+from app.markdown_utils import iter_answer_segments, protect_currency
 
 
 @st.cache_resource
@@ -172,7 +173,7 @@ class StepCollector:
         if step is None:
             if kind in {"output", "error", "tool_result"}:
                 # Orphan result: keep it in the step list and surface it now.
-                note = {"kind": "note", "text": event["text"]}
+                note = {"kind": "note", "text": event["text"], "orphan": True}
                 self.steps.append(note)
                 return [note]
             return []
@@ -212,30 +213,33 @@ def render_command_step(step: dict) -> None:
         st.code(command, language="bash")
         if step["output"]:
             st.code(step["output"])
-        if step["error"] and not failed:
-            st.error(step["error"])
-        if step["status"]:
-            st.caption(f"exit {step['status']['code']} - "
-                       f"{'succeeded' if step['status']['ok'] else 'failed'}")
-    if failed:
+        # Full stderr (tracebacks included) stays inside the sub-container,
+        # whether the command succeeded or failed.
         if step["error"]:
             st.error(step["error"])
         if step["status"]:
-            st.error(f"Command failed with exit code {step['status']['code']}")
+            _caption(f"exit {step['status']['code']} - "
+                     f"{'succeeded' if step['status']['ok'] else 'failed'}")
+    if failed and step["status"]:
+        st.error(f"Command failed with exit code {step['status']['code']}")
 
 
 def render_tool_step(step: dict) -> None:
     label = _tool_label(step["name"], step["args"])
     with st.expander(label):
         if step["result"]:
-            st.caption(step["result"])
+            _caption(step["result"])
         else:
-            st.caption(f"{step['name']}({_one_line(step['args'], 80)})")
+            _caption(f"{step['name']}({_one_line(step['args'], 80)})")
 
 
 def render_step(step: dict) -> None:
     if step["kind"] == "note":
-        st.caption(step["text"])
+        if step.get("orphan"):
+            with st.expander("Output"):
+                _caption(step["text"])
+        else:
+            _caption(step["text"])
     elif step["kind"] == "command":
         render_command_step(step)
     elif step["kind"] == "tool":
@@ -250,6 +254,42 @@ def render_steps(steps: list[dict]) -> None:
 def render_trace(events: list[dict]) -> None:
     """Render a completed event list inside the current container."""
     render_steps(group_trace(events))
+
+
+def _md(text: str) -> None:
+    """Render markdown with currency signs protected from LaTeX parsing."""
+    st.markdown(protect_currency(text))
+
+
+def _caption(text: str) -> None:
+    """Render a caption with currency signs protected from LaTeX parsing."""
+    st.caption(protect_currency(text))
+
+
+def render_answer(content: str, artifacts: list[Path]) -> set[Path]:
+    """Render an assistant answer, showing figure references inline.
+
+    Lines of the form `![caption](artifact/path.json)` whose target matches
+    an artifact render as charts at that point in the text; everything else
+    renders as markdown. Returns the referenced artifacts so the caller can
+    exclude them from the trailing gallery.
+    """
+    referenced: set[Path] = set()
+    for kind, payload in iter_answer_segments(content, artifacts):
+        if kind == "markdown":
+            _md(payload)
+        else:
+            path = payload["path"]
+            referenced.add(path)
+            if path.suffix.lower() == ".json":
+                _render_plotly_figure(path)
+            elif path.suffix.lower() == ".png":
+                st.image(str(path))
+            else:
+                _caption(_artifact_label(path))
+            if payload["caption"]:
+                _caption(payload["caption"])
+    return referenced
 
 
 def _render_plotly_figure(path: Path) -> None:
@@ -270,7 +310,7 @@ def _render_plotly_figure(path: Path) -> None:
     try:
         fig = pio.from_json(path.read_text())
     except Exception:  # noqa: BLE001
-        st.caption(_artifact_label(path))
+        _caption(_artifact_label(path))
         return
 
     try:
@@ -333,8 +373,9 @@ def render_artifacts(paths: list[Path]) -> None:
 def render_assistant_turn(msg: dict) -> None:
     with st.status("Analysis trace", state="complete", expanded=False):
         render_trace(msg.get("trace", []))
-    st.markdown(msg["content"] or "(no answer produced)")
-    render_artifacts(msg.get("artifacts", []))
+    artifacts = msg.get("artifacts", [])
+    referenced = render_answer(msg["content"] or "(no answer produced)", artifacts)
+    render_artifacts([p for p in artifacts if p not in referenced])
 
 
 def main() -> None:
@@ -382,7 +423,7 @@ def main() -> None:
             if msg["role"] == "assistant":
                 render_assistant_turn(msg)
             else:
-                st.markdown(msg["content"])
+                _md(msg["content"])
 
     if not st.session_state.messages:
         st.caption("Start by asking a question about the dataset.")
@@ -398,7 +439,7 @@ def main() -> None:
 
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
-        st.markdown(question)
+        _md(question)
 
     rel_data_path = (PROJECT_ROOT / data_path).resolve().relative_to(PROJECT_ROOT)
     user_message = (
@@ -457,11 +498,10 @@ def main() -> None:
             )
             return
 
-        st.markdown(final or "(no answer produced)")
-
         after = {p for p in artifacts_dir.iterdir() if p.is_file()}
         new_artifacts = sorted(after - before)
-        render_artifacts(new_artifacts)
+        referenced = render_answer(final or "(no answer produced)", new_artifacts)
+        render_artifacts([p for p in new_artifacts if p not in referenced])
 
     st.session_state.messages.append(
         {
