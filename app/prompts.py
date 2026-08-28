@@ -29,7 +29,8 @@ spot (the alt text becomes a caption under the chart):
 ![Revenue by channel](artifacts/<thread>/revenue_by_channel.json)
 
 Use the exact artifact path you saved the figure to (the artifacts
-directory is given in the user's message).
+directory is given in the user's message). The same reference line works
+for tables (`.csv`), which the UI renders as a collapsed table.
 
 ## Answer
 

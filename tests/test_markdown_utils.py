@@ -108,6 +108,15 @@ def test_bare_filename_matches():
     assert [s[0] for s in segs] == ["figure"]
 
 
+def test_table_reference_yields_figure_segment():
+    """CSV references segment like charts; the UI renders them collapsed."""
+    segs = list(
+        iter_answer_segments("![Table](artifacts/session-x/rev.csv)\n", _arts("rev.csv"))
+    )
+    assert segs[0][0] == "figure"
+    assert segs[0][1]["path"].suffix == ".csv"
+
+
 def test_list_item_reference_matches():
     segs = list(
         iter_answer_segments("- ![Rev](artifacts/session-x/rev.json)\n", _arts("rev.json"))

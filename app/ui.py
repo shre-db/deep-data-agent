@@ -208,7 +208,6 @@ def group_trace(events: list[dict]) -> list[dict]:
 
 def render_command_step(step: dict) -> None:
     command = step["command"]
-    failed = bool(step["status"] and not step["status"]["ok"])
     with st.expander(f"Ran: {_one_line(command)}"):
         st.code(command, language="bash")
         if step["output"]:
@@ -216,12 +215,10 @@ def render_command_step(step: dict) -> None:
         # Full stderr (tracebacks included) stays inside the sub-container,
         # whether the command succeeded or failed.
         if step["error"]:
-            st.error(step["error"])
+            st.error(protect_currency(step["error"]))
         if step["status"]:
             _caption(f"exit {step['status']['code']} - "
                      f"{'succeeded' if step['status']['ok'] else 'failed'}")
-    if failed and step["status"]:
-        st.error(f"Command failed with exit code {step['status']['code']}")
 
 
 def render_tool_step(step: dict) -> None:
@@ -285,11 +282,22 @@ def render_answer(content: str, artifacts: list[Path]) -> set[Path]:
                 _render_plotly_figure(path)
             elif path.suffix.lower() == ".png":
                 st.image(str(path))
+            elif path.suffix.lower() == ".csv":
+                _render_table(path)
             else:
                 _caption(_artifact_label(path))
             if payload["caption"]:
                 _caption(payload["caption"])
     return referenced
+
+
+def _render_table(path: Path) -> None:
+    """Render a CSV artifact inside a collapsed expander."""
+    with st.expander(path.name):
+        try:
+            st.dataframe(pd.read_csv(path))
+        except Exception as e:  # noqa: BLE001
+            _caption(f"Could not preview {path.name}: {e}")
 
 
 def _render_plotly_figure(path: Path) -> None:
@@ -361,13 +369,9 @@ def render_artifacts(paths: list[Path]) -> None:
     for p in pngs:
         st.image(str(p))
     for p in tables:
-        with st.expander(p.name):
-            try:
-                st.dataframe(pd.read_csv(p))
-            except Exception as e:  # noqa: BLE001
-                st.caption(f"Could not preview {p.name}: {e}")
+        _render_table(p)
     for p in other:
-        st.caption(_artifact_label(p))
+        _caption(_artifact_label(p))
 
 
 def render_assistant_turn(msg: dict) -> None:
@@ -474,7 +478,7 @@ def main() -> None:
                     if kind == "final":
                         final = event["text"]
                     elif kind == "commentary":
-                        st.caption(event["text"])
+                        _caption(event["text"])
                     else:
                         for step in collector.add(event):
                             render_step(step)
@@ -486,7 +490,7 @@ def main() -> None:
 
             traceback.print_exc()  # server log: full traceback
             status.update(label="Analysis failed", state="error", expanded=True)
-            st.error(f"Agent error: {e}")
+            st.error(protect_currency(f"Agent error: {e}"))
             # Persist the partial turn so the trace is not lost.
             st.session_state.messages.append(
                 {
