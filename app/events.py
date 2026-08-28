@@ -102,51 +102,87 @@ def _execute_command(args) -> str:
     return str(args)
 
 
-def classify_messages(messages) -> Iterator[dict]:
+def _message_events(
+    message, seen: set, include_commentary: bool, tool_names: dict
+) -> Iterator[dict]:
+    """Yield trace events for one LangChain message.
+
+    Messages whose id was already seen are skipped (LangGraph node updates
+    can re-emit the same message via middleware nodes). Messages without an
+    id are always processed.
+
+    `tool_names` maps tool_call_id -> tool name, built from AIMessage
+    tool_calls; it is the reliable way to classify ToolMessages, whose
+    `name` attribute may be missing on streamed objects.
+    """
+    mid = getattr(message, "id", None)
+    if mid is not None:
+        if mid in seen:
+            return
+        seen.add(mid)
+
+    if isinstance(message, AIMessage) and message.tool_calls:
+        if include_commentary and isinstance(message.content, str) and message.content.strip():
+            yield {"type": "commentary", "text": message.content.strip()}
+        for call in message.tool_calls:
+            tool_names[call["id"]] = call["name"]
+            if call["name"] == "execute":
+                yield {"type": "command", "text": _execute_command(call.get("args")), "id": call["id"]}
+            else:
+                yield {
+                    "type": "tool_call",
+                    "name": call["name"],
+                    "args": _shorten(call.get("args"), MAX_TOOL_ARGS_CHARS),
+                    "id": call["id"],
+                }
+    elif isinstance(message, ToolMessage):
+        raw = _tool_message_text(message)
+        tcid = getattr(message, "tool_call_id", None)
+        name = message.name or tool_names.get(tcid)
+        if name == "execute":
+            parsed = _parse_execute_output(raw)
+            for event in (
+                {"type": "output", "text": _truncate_block(parsed["stdout"])},
+                {"type": "error", "text": _truncate_block(parsed["stderr"])},
+            ):
+                if event["text"]:
+                    yield {**event, "id": tcid}
+            if parsed["status"]:
+                yield {**{"type": "status", **parsed["status"]}, "id": tcid}
+        else:
+            yield {
+                "type": "tool_result",
+                "text": _shorten(raw, MAX_TOOL_RESULT_CHARS),
+                "id": tcid,
+            }
+    elif isinstance(message, AIMessage) and message.content and not message.tool_calls:
+        yield {"type": "final", "text": message.content}
+
+
+def classify_messages(messages, seen: set | None = None) -> Iterator[dict]:
     """Yield trace events from a list of checkpointed LangChain messages.
 
     Mirrors the event classification of stream_events so restored history
     renders identically to live turns. Agent commentary is recovered from
     tool-call message content.
     """
+    seen = set() if seen is None else seen
+    tool_names: dict = {}
     for message in messages:
-        if isinstance(message, AIMessage) and message.tool_calls:
-            if isinstance(message.content, str) and message.content.strip():
-                yield {"type": "commentary", "text": message.content.strip()}
-            for call in message.tool_calls:
-                if call["name"] == "execute":
-                    yield {"type": "command", "text": _execute_command(call.get("args"))}
-                else:
-                    yield {
-                        "type": "tool_call",
-                        "name": call["name"],
-                        "args": _shorten(call.get("args"), MAX_TOOL_ARGS_CHARS),
-                    }
-        elif isinstance(message, ToolMessage):
-            raw = _tool_message_text(message)
-            if message.name == "execute":
-                parsed = _parse_execute_output(raw)
-                if parsed["stdout"]:
-                    yield {"type": "output", "text": _truncate_block(parsed["stdout"])}
-                if parsed["stderr"]:
-                    yield {"type": "error", "text": _truncate_block(parsed["stderr"])}
-                if parsed["status"]:
-                    yield {"type": "status", **parsed["status"]}
-            else:
-                yield {"type": "tool_result", "text": _shorten(raw, MAX_TOOL_RESULT_CHARS)}
+        yield from _message_events(message, seen, include_commentary=True, tool_names=tool_names)
 
 
 def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
     """Run the agent for one turn, yielding ordered events.
 
-    Event shapes:
+    Event shapes (step events carry `id` = tool_call_id for pairing):
       {"type": "commentary", "text": str}    - agent reasoning/commentary block
-      {"type": "command", "text": str}       - shell command (execute tool)
-      {"type": "output", "text": str}        - command stdout (newlines kept)
-      {"type": "error", "text": str}         - command stderr / traceback
-      {"type": "status", "ok": bool, "code": int}
-      {"type": "tool_call", "name": str, "args": str}   - non-execute tools
-      {"type": "tool_result", "text": str}              - non-execute results
+      {"type": "command", "text": str, "id": str}       - shell command
+      {"type": "output", "text": str, "id": str}        - command stdout
+      {"type": "error", "text": str, "id": str}         - command stderr
+      {"type": "status", "ok": bool, "code": int, "id": str}
+      {"type": "tool_call", "name": str, "args": str, "id": str}
+      {"type": "tool_result", "text": str, "id": str}
       {"type": "final", "text": str}         - the final answer message
 
     Streamed text is buffered per message id; a buffer whose id matches the
@@ -157,6 +193,8 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
     final_id = None
     buf_id = None
     buf_text = ""
+    seen: set = set()
+    tool_names: dict = {}
 
     def commentary_events() -> Iterator[dict]:
         nonlocal buf_id, buf_text
@@ -183,45 +221,18 @@ def stream_events(agent, user_message: str, thread_id: str) -> Iterator[dict]:
         elif mode == "updates":
             for update in payload.values():
                 for message in (update or {}).get("messages", []):
-                    if isinstance(message, AIMessage) and message.tool_calls:
+                    for event in _message_events(
+                        message, seen, include_commentary=False, tool_names=tool_names
+                    ):
+                        if event["type"] == "final":
+                            # Record without flushing the stream buffer: the
+                            # buffered text with this id IS the final answer
+                            # and is suppressed via the final_id check below.
+                            final_content = event["text"]
+                            final_id = getattr(message, "id", None)
+                            continue
                         yield from commentary_events()
-                        for call in message.tool_calls:
-                            if call["name"] == "execute":
-                                yield {
-                                    "type": "command",
-                                    "text": _execute_command(call.get("args")),
-                                }
-                            else:
-                                yield {
-                                    "type": "tool_call",
-                                    "name": call["name"],
-                                    "args": _shorten(call.get("args"), MAX_TOOL_ARGS_CHARS),
-                                }
-                    elif isinstance(message, ToolMessage):
-                        yield from commentary_events()
-                        raw = _tool_message_text(message)
-                        if message.name == "execute":
-                            parsed = _parse_execute_output(raw)
-                            if parsed["stdout"]:
-                                yield {
-                                    "type": "output",
-                                    "text": _truncate_block(parsed["stdout"]),
-                                }
-                            if parsed["stderr"]:
-                                yield {
-                                    "type": "error",
-                                    "text": _truncate_block(parsed["stderr"]),
-                                }
-                            if parsed["status"]:
-                                yield {"type": "status", **parsed["status"]}
-                        else:
-                            yield {
-                                "type": "tool_result",
-                                "text": _shorten(raw, MAX_TOOL_RESULT_CHARS),
-                            }
-                    if isinstance(message, AIMessage) and message.content and not message.tool_calls:
-                        final_content = message.content
-                        final_id = message.id
+                        yield event
 
     if final_content:
         if buf_text.strip() and buf_id != final_id:

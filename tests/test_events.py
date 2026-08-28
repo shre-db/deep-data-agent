@@ -4,7 +4,12 @@ import json
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 
-from app.events import _parse_execute_output, _truncate_block, stream_events
+from app.events import (
+    _parse_execute_output,
+    _truncate_block,
+    classify_messages,
+    stream_events,
+)
 
 
 class StubAgent:
@@ -47,7 +52,7 @@ class StubAgent:
                     "messages": [
                         AIMessage(
                             content="",
-                            id="m1",
+                            id="m3",
                             tool_calls=[
                                 {
                                     "name": "execute",
@@ -99,11 +104,14 @@ def test_stream_events_order_and_shapes():
     ]
     assert events[0]["text"] == "Hello"
     assert events[1]["name"] == "inspect_dataset"
+    assert events[1]["id"] == "1"
     assert events[2]["text"] == "shape info"
+    assert events[2]["id"] == "1"
     assert events[3]["text"] == "python analysis.py"
+    assert events[3]["id"] == "2"
     assert events[4]["text"] == "row 1\nrow 2"  # newlines preserved
     assert "warning: something" in events[5]["text"]
-    assert events[6] == {"type": "status", "ok": False, "code": 3}
+    assert events[6] == {"type": "status", "ok": False, "code": 3, "id": "2"}
     assert events[7]["text"] == "Final answer"
 
 
@@ -172,3 +180,101 @@ def test_long_tool_result_shortened():
     events = list(stream_events(LongAgent(), "q", "t"))
     assert len(events[0]["text"]) < 500
     assert events[0]["text"].endswith("...")
+
+
+def test_duplicate_messages_deduped():
+    """LangGraph middleware nodes can re-emit the same message; only the
+    first occurrence must produce events."""
+
+    class DupAgent:
+        def stream(self, _input, config=None, stream_mode=None):
+            message = AIMessage(
+                content="",
+                id="m1",
+                tool_calls=[
+                    {"name": "execute", "args": {"command": "ls"}, "id": "1",
+                     "type": "tool_call"}
+                ],
+            )
+            tool_msg = ToolMessage(
+                content="out\n\n[Command succeeded with exit code 0]",
+                tool_call_id="1", name="execute", id="t1",
+            )
+            # First update: normal emission
+            yield ("updates", {"model": {"messages": [message]}})
+            yield ("updates", {"tools": {"messages": [tool_msg]}})
+            # Middleware re-emissions of the same messages (same ids)
+            yield ("updates", {"model": {"messages": [message]}})
+            yield ("updates", {"tools": {"messages": [tool_msg]}})
+            yield ("updates", {"model": {"messages": [AIMessage(content="done", id="m2")]}})
+
+    events = list(stream_events(DupAgent(), "q", "t"))
+    kinds = [e["type"] for e in events]
+    assert kinds.count("command") == 1
+    assert kinds.count("output") == 1
+    assert kinds.count("status") == 1
+    assert kinds == ["command", "output", "status", "final"]
+
+
+def test_toolmessage_without_name_classified_via_tool_call_id():
+    """Streamed ToolMessages may lack the `name` attribute; classification
+    must fall back to the tool_call_id -> name map from the AIMessage."""
+
+    class NamelessAgent:
+        def stream(self, _input, config=None, stream_mode=None):
+            yield (
+                "updates",
+                {
+                    "model": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                id="m1",
+                                tool_calls=[
+                                    {"name": "execute", "args": {"command": "ls"},
+                                     "id": "call_x", "type": "tool_call"},
+                                ],
+                            )
+                        ]
+                    }
+                },
+            )
+            # No `name` attribute on the streamed ToolMessage
+            yield (
+                "updates",
+                {
+                    "tools": {
+                        "messages": [
+                            ToolMessage(
+                                content="file1\nfile2\n\n[Command succeeded with exit code 0]",
+                                tool_call_id="call_x",
+                            )
+                        ]
+                    }
+                },
+            )
+            yield ("updates", {"model": {"messages": [AIMessage(content="done", id="m2")]}})
+
+    events = list(stream_events(NamelessAgent(), "q", "t"))
+    kinds = [e["type"] for e in events]
+    assert kinds == ["command", "output", "status", "final"]
+    assert events[1] == {"type": "output", "text": "file1\nfile2", "id": "call_x"}
+    assert events[2] == {"type": "status", "ok": True, "code": 0, "id": "call_x"}
+
+
+def test_classify_messages_without_name_uses_tool_call_id():
+    """Restore path: checkpointed ToolMessages without name are still
+    classified through the tool_call_id map."""
+    msgs = [
+        AIMessage(
+            content="",
+            id="m1",
+            tool_calls=[
+                {"name": "execute", "args": {"command": "ls"}, "id": "c1",
+                 "type": "tool_call"},
+            ],
+        ),
+        ToolMessage(content="out\n\n[Command succeeded with exit code 0]", tool_call_id="c1"),
+    ]
+    events = list(classify_messages(msgs))
+    assert [e["type"] for e in events] == ["command", "output", "status"]
