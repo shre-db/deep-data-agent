@@ -84,7 +84,26 @@ def protect_currency(text: str) -> str:
 
 
 # Optional list-marker prefix so references work inside bullet lists too.
-_REF_LINE_RE = re.compile(r"^(\s*(?:[-*+]\s+)?)!\[([^\]]*)\]\(([^)\s]+)\)\s*$")
+# The `!` is optional: models often write plain links for tables.
+_REF_LINE_RE = re.compile(r"^(\s*(?:[-*+]\s+)?)(!?)\[([^\]]*)\]\(([^)\s]+)\)\s*$")
+
+_ANSWER_HEADING_RE = re.compile(r"^\s*#{1,6}\s*Answer\s*$", re.IGNORECASE)
+
+
+def strip_leading_answer_heading(content: str) -> str:
+    """Drop an 'Answer' heading when it opens the answer.
+
+    In a chat bubble everything is the answer, so an '## Answer' heading at
+    the top is noise. Only the first content line is considered; headings
+    later in the text are left alone.
+    """
+    lines = content.splitlines()
+    start = 0
+    while start < len(lines) and not lines[start].strip():
+        start += 1
+    if start < len(lines) and _ANSWER_HEADING_RE.match(lines[start]):
+        del lines[start]
+    return "\n".join(lines)
 
 
 def _match_artifact(target: str, artifacts: list[Path]) -> Path | None:
@@ -107,23 +126,25 @@ def iter_answer_segments(
 ) -> "Iterator[tuple[str, object]]":
     """Split an answer into ("markdown", text) and ("figure", payload) parts.
 
-    A line of the form `![caption](artifact/path.json)` whose target matches
-    an artifact becomes a figure segment (`{"path": Path, "caption": str}`);
-    everything else stays markdown. A reference whose target matches no
-    artifact renders as its caption text instead (no broken image).
+    A line of the form `![caption](artifact/path.json)` or a plain
+    `[caption](artifact/path.csv)` whose target matches an artifact becomes
+    a figure segment (`{"path": Path, "caption": str}`); everything else
+    stays markdown. An unmatched image reference renders as its caption
+    text (no broken image); an unmatched plain link passes through
+    unchanged (it may be a genuine external link).
     """
     buffer: list[str] = []
     for line in content.splitlines(keepends=True):
         stripped = line.rstrip("\n")
         match = _REF_LINE_RE.match(stripped)
-        path = _match_artifact(match.group(3), artifacts) if match else None
+        path = _match_artifact(match.group(4), artifacts) if match else None
         if match and path:
             if buffer:
                 yield ("markdown", "".join(buffer))
                 buffer = []
-            yield ("figure", {"path": path, "caption": match.group(2)})
-        elif match:
-            buffer.append(match.group(1) + match.group(2) + "\n")
+            yield ("figure", {"path": path, "caption": match.group(3)})
+        elif match and match.group(2):
+            buffer.append(match.group(1) + match.group(3) + "\n")
         else:
             buffer.append(line)
     if buffer:

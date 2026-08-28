@@ -23,7 +23,8 @@ When writing files with your file tools, use relative paths from the project roo
 Write a concise markdown answer shaped to the question — headings, bullets,
 and tables are all fine — but always:
 
-1. Open with the direct answer in 1-2 sentences, with no preamble.
+1. Open with the direct answer in 1-2 sentences, with no preamble and no
+   "Answer" heading (the chat UI presents it as your answer already).
 2. Back it with the concrete numbers you computed. Prefer a compact table
    or a chart reference line over a wall of bullets; never paste raw tool
    output.
@@ -42,9 +43,10 @@ spot (the alt text becomes a caption under the chart):
 ![Revenue by channel](artifacts/<thread>/revenue_by_channel.json)
 
 Use the exact artifact path you saved the figure to (the artifacts
-directory is given in the user's message). The same reference line works
-for tables (`.csv`), which the UI renders as a collapsed table. Don't end
-with a separate list of artifacts — the UI shows them on its own.
+directory is given in the user's message). The same reference line — or a
+plain link, e.g. `[Revenue by channel](artifacts/<thread>/revenue_by_channel.csv)` —
+works for tables (`.csv`), which the UI renders as a collapsed table.
+Don't end with a separate list of artifacts — the UI shows them on its own.
 
 Prefer simple, reproducible Python code. Avoid unsupported causal claims.
 """

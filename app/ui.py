@@ -15,7 +15,11 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent import PROJECT_ROOT, build_checkpointer, create_analysis_agent
 from app.events import classify_messages, stream_events
 from app.main import thread_artifacts_dir
-from app.markdown_utils import iter_answer_segments, protect_currency
+from app.markdown_utils import (
+    iter_answer_segments,
+    protect_currency,
+    strip_leading_answer_heading,
+)
 
 
 @st.cache_resource
@@ -314,7 +318,9 @@ def render_answer(content: str, artifacts: list[Path]) -> set[Path]:
     exclude them from the trailing gallery.
     """
     referenced: set[Path] = set()
-    for kind, payload in iter_answer_segments(content, artifacts):
+    for kind, payload in iter_answer_segments(
+        strip_leading_answer_heading(content), artifacts
+    ):
         if kind == "markdown":
             _md(payload)
         else:
@@ -402,18 +408,22 @@ def _render_plotly_figure(path: Path) -> None:
 
 
 def render_artifacts(paths: list[Path]) -> None:
+    """Render leftover (unreferenced) artifacts in one collapsed expander."""
+    if not paths:
+        return
     figures = [p for p in paths if p.suffix.lower() == ".json"]
     pngs = [p for p in paths if p.suffix.lower() == ".png"]
     tables = [p for p in paths if p.suffix.lower() == ".csv"]
     other = [p for p in paths if p not in figures and p not in pngs and p not in tables]
-    for p in figures:
-        _render_plotly_figure(p)
-    for p in pngs:
-        st.image(str(p))
-    for p in tables:
-        _render_table(p)
-    for p in other:
-        _caption(_artifact_label(p))
+    with st.expander(f"Artifacts ({len(paths)})"):
+        for p in figures:
+            _render_plotly_figure(p)
+        for p in pngs:
+            st.image(str(p))
+        for p in tables:
+            _render_table(p)
+        for p in other:
+            _mono_caption(_artifact_label(p))
 
 
 def render_assistant_turn(msg: dict) -> None:

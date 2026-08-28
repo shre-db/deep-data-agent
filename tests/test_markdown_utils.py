@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from app.markdown_utils import iter_answer_segments, protect_currency
+from app.markdown_utils import (
+    iter_answer_segments,
+    protect_currency,
+    strip_leading_answer_heading,
+)
 
 
 # --- protect_currency: currency -------------------------------------------
@@ -127,6 +131,44 @@ def test_list_item_reference_matches():
 def test_unmatched_reference_renders_caption_text():
     segs = list(iter_answer_segments("![Rev](other.json)\n", _arts("rev.json")))
     assert segs == [("markdown", "Rev\n")]
+
+
+def test_plain_link_to_artifact_yields_figure_segment():
+    """Models often write tables as plain links instead of image refs."""
+    segs = list(
+        iter_answer_segments("[Rev](artifacts/session-x/rev.csv)\n", _arts("rev.csv"))
+    )
+    assert [s[0] for s in segs] == ["figure"]
+    assert segs[0][1]["path"].suffix == ".csv"
+    assert segs[0][1]["caption"] == "Rev"
+
+
+def test_plain_link_to_external_url_passes_through():
+    segs = list(iter_answer_segments("[docs](https://example.com)\n", _arts("rev.csv")))
+    assert segs == [("markdown", "[docs](https://example.com)\n")]
+
+
+# --- strip_leading_answer_heading -----------------------------------------
+
+
+def test_leading_answer_heading_stripped():
+    assert strip_leading_answer_heading("# Answer\n\nOrganic leads.") == (
+        "\nOrganic leads."
+    )
+    assert strip_leading_answer_heading("## Answer\nOrganic leads.") == (
+        "Organic leads."
+    )
+    assert strip_leading_answer_heading("### ANSWER\nx") == "x"
+
+
+def test_answer_heading_not_at_start_kept():
+    text = "Organic leads.\n\n## Answer detail\nMore."
+    assert strip_leading_answer_heading(text) == text
+
+
+def test_no_heading_unchanged():
+    text = "Organic leads with $1.2M."
+    assert strip_leading_answer_heading(text) == text
 
 
 def test_plain_markdown_unchanged():
