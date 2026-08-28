@@ -2,11 +2,11 @@
 
 Prototype of a natural-language data analysis agent built with
 [Deep Agents](https://docs.langchain.com/oss/python/deepagents/overview/),
-pandas, and matplotlib.
+pandas, and Plotly.
 
 Give it a CSV and a question; it plans the analysis, writes and executes
-pandas code, validates the numbers, generates plots, and returns an
-evidence-backed answer with saved artifacts.
+pandas code, validates the numbers, generates interactive charts, and
+returns an evidence-backed answer with saved artifacts.
 
 ## Requirements
 
@@ -86,19 +86,17 @@ Running analysis... (live trace below)
 
 ============================================================
 
-## Answer
-
 Organic leads with $1,387,240.56 — 38% of total revenue...
 ...
 
 Artifacts saved:
-- artifacts/default/revenue_by_channel.png
-- artifacts/default/analysis.py
+- artifacts/<thread>/revenue_by_channel.json
+- artifacts/<thread>/analysis.py
 ```
 
 ## Web UI
 
-A minimal Streamlit chat frontend is included:
+A Streamlit chat frontend is included:
 
 ```bash
 uv run streamlit run app/ui.py
@@ -106,10 +104,18 @@ uv run streamlit run app/ui.py
 
 - Chat with the agent in the browser; each conversation gets its own thread
   and artifact folder (`artifacts/<thread>/`).
-- The agent's research trace (commentary, tool calls, tool results) is shown
-  in a collapsible "Analysis trace" panel per message.
-- Charts and tables generated during a turn render inline under the answer;
-  scripts are listed as plain captions.
+- The agent's research trace (commentary, commands, tool calls, results) is
+  shown in a collapsible "Analysis trace" panel per message, with failures
+  contained inside their expanders.
+- Charts and tables referenced in the answer
+  (`![caption](artifacts/<thread>/<name>.json)` or a plain link) render
+  inline at that point in the answer; unreferenced artifacts appear in one
+  collapsed "Artifacts (N)" gallery, with code files shown as highlighted
+  code blocks.
+- Currency stays literal while real LaTeX (`$x^2$`, `$$…$$`) still renders
+  as math.
+- Themed with Inter for UI text and JetBrains Mono for code, tool output,
+  and trace metadata.
 - The sidebar has the dataset path, model display, and thread controls
   (new conversation / resume by thread id).
 
@@ -136,12 +142,13 @@ The model is selected with the `MODEL` env var (`provider:model`):
 
 1. Loads and profiles the dataset (rows, columns, dtypes, missing values).
 2. Plans the analysis using Deep Agents' built-in planning.
-3. Writes and executes pandas/matplotlib code through a sandboxed shell
+3. Writes and executes pandas/Plotly code through a sandboxed shell
    backend rooted at the project directory (no access to your environment
    variables or secrets).
-4. Saves scripts, tables, and plots under `artifacts/`.
-5. Validates important numbers and returns a structured answer
-   (Answer / Key findings / Caveats / Artifacts).
+4. Saves scripts, tables, and interactive chart JSONs under
+   `artifacts/<thread>/`.
+5. Validates important numbers and returns an evidence-backed answer that
+   leads with the result, cites computed numbers, and discloses limitations.
 
 While it works, the CLI streams a live trace of the agent's tool calls,
 tool results, and generated text — no blank-screen waiting.
@@ -150,18 +157,22 @@ tool results, and generated text — no blank-screen waiting.
 
 ```
 app/
-├── main.py      # CLI: args, dataset report, live trace, interactive loop, artifacts
-├── agent.py     # model factory, checkpointer, dataset tool, sandboxed backend
-├── events.py    # shared agent event stream (used by CLI and UI)
-├── prompts.py   # analyst system prompt + output format
-└── ui.py        # Streamlit chat frontend
-data/            # sample synthetic sales dataset
-artifacts/       # runtime-generated scripts, tables, plots, per thread (gitignored)
-.checkpoints/    # SQLite conversation memory per thread (gitignored)
-tests/           # smoke tests (no LLM calls)
-scripts/         # sample data generator
-docs/            # requirements document
-RELEASE.md       # release notes (newest first)
+├── main.py             # CLI: args, dataset report, live trace, interactive loop, artifacts
+├── agent.py            # model factory, checkpointer, dataset tool, sandboxed backend
+├── events.py           # shared agent event stream (used by CLI and UI)
+├── markdown_utils.py   # currency-vs-LaTeX preprocessing, answer segmentation
+├── prompts.py          # analyst system prompt + answering framework
+├── ui.py               # Streamlit chat frontend
+└── agent_tools/
+    └── charts.py       # Plotly chart helpers (consistent styling, JSON artifacts)
+.streamlit/config.toml  # UI theme (Inter font)
+data/                   # sample synthetic sales dataset
+artifacts/              # runtime-generated scripts, tables, charts, per thread (gitignored)
+.checkpoints/           # SQLite conversation memory per thread (gitignored)
+tests/                  # offline tests (no LLM calls)
+scripts/                # sample data generator
+docs/                   # requirements + "The Analyst on Staff" design doc
+RELEASE.md              # release notes (newest first)
 ```
 
 ## Testing

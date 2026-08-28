@@ -5,6 +5,66 @@ Format: newest first, [Keep a Changelog](https://keepachangelog.com) style.
 Versioning: [semantic versioning](https://semver.org) — the project stays on
 `0.x` while in prototype stage; minor bumps mark feature releases.
 
+## [v0.3.0] — 2026-08-29
+
+The UI polish release: structured traces, interactive charts, inline
+artifacts, custom fonts, and the post-prototype product direction.
+
+### Added
+
+- **Interactive Plotly charts**: chart helpers (`app/agent_tools/charts.py`)
+  save figure JSON with one consistent style — validated light/dark
+  categorical palette, computed margins, horizontal legend — and the UI
+  renders them theme-aware with `st.plotly_chart`. `plotly` added to
+  dependencies; matplotlib remains as the fallback.
+- **Inline artifact references**: a `![caption](artifacts/<thread>/<name>.json)`
+  line (or a plain link, e.g. for `.csv` tables) renders the artifact at the
+  point in the answer where it is discussed. Unreferenced artifacts collapse
+  into a single "Artifacts (N)" gallery; code files (`.py`/`.sql`/`.sh`)
+  render as syntax-highlighted code blocks.
+- **Markdown preprocessing** (`app/markdown_utils.py`): currency amounts
+  (`$3,643,063.54`, `$98–106`) stay literal while real LaTeX (`$x^2$`,
+  `$$…$$`) still renders as math; a leading "Answer" heading is stripped.
+- **Custom fonts**: Inter for UI text via native `[theme] font` config
+  (`.streamlit/config.toml`) and JetBrains Mono for code, tool calls, trace
+  metadata, JSON, and stack traces.
+- **Answer framework**: the rigid Answer / Key findings / Caveats /
+  Artifacts template is replaced by principles — answer first, numbers as
+  evidence, mandatory limitations check — with the shape left to the
+  question; the prose artifacts list is dropped (the UI shows them).
+- **Product design doc**: `docs/analyst_on_staff.md` (+ designed HTML
+  rendering) — thesis and core loop, six design principles, architecture,
+  data model, canonical morning-briefing scenario, M0–M4 roadmap.
+
+### Fixed
+
+- **Duplicated tool output in the trace**: LangGraph's messages stream also
+  emits node outputs (ToolMessages); only chat-model messages now enter the
+  commentary buffer, so tool results no longer render twice.
+- **Failed-command tracebacks** render inside their expander; the stray
+  outside failure notice is removed; orphan output renders collapsed.
+- **Chart labels clipped out of frame**: `automargin` plus margins computed
+  from axis-title/legend presence.
+- **LLM retries** (`LLM_MAX_RETRIES`, default 4) for transient TLS/connection
+  drops on hosted endpoints.
+- The UI persists partial turns when an analysis fails mid-run.
+
+### Verified
+
+- Full offline suite: 58 tests — event stream shape/dedupe/echo suppression,
+  chart helper output, currency-vs-LaTeX preprocessing, answer segmentation,
+  step grouping.
+- Live-run review of the trace, inline charts/tables, fonts, and currency
+  rendering (light and dark themes).
+
+### Known limitations (by design)
+
+- No process isolation (env vars hidden, filesystem rooted at the project
+  directory, but no real sandbox); not for untrusted users.
+- CSV-only connectors; single agent, no subagents.
+- Plotly charts render in an iframe, so Inter inside chart labels depends on
+  iframe font loading; fallback stacks keep charts clean either way.
+
 ## [v0.2.0] — 2026-08-28
 
 First feature release after the `proto-v1` milestone.
