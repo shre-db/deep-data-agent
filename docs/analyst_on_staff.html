@@ -105,6 +105,7 @@
   .section-note { color: var(--muted); font-size: 0.9rem; margin: 0 0 20px; }
   section p { max-width: 68ch; }
   section p + p { margin-top: 0; }
+  h3 { font-size: 1rem; font-weight: 600; margin: 26px 0 4px; text-wrap: balance; }
 
   /* The core loop */
   .loop {
@@ -235,6 +236,19 @@
   .risks li { margin-bottom: 10px; }
   .risks b { font-weight: 600; }
 
+  .note {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 0.88rem;
+    color: var(--secondary);
+    max-width: 72ch;
+    margin-top: 14px;
+  }
+  .note b { color: var(--ink); font-weight: 600; }
+
   footer {
     margin-top: 96px;
     padding-top: 24px;
@@ -313,6 +327,49 @@
   </section>
 
   <section>
+    <h2>Scope and domain generality</h2>
+    <p class="section-note">The loop is invariant; the system is not.</p>
+    <p>The core loop is domain-invariant: <code>data &rarr; analyst core &rarr; validated run &rarr; deliverable &rarr; audience &rarr; feedback &rarr; memory</code> is the shape of all knowledge work, from toy CSV questions to astrophysics. Whether the <b>system</b> works in practice for a given domain is a separate question, decided by variables that surround the loop rather than by its shape.</p>
+    <ul class="risks">
+      <li><b>Data substrate</b> &mdash; from one CSV to petabyte archives, domain formats, and calibration pipelines. The data node hides an entire infrastructure budget.</li>
+      <li><b>Who authors the analysis</b> &mdash; the agent writes <code>analysis.py</code> for a business dataset; in frontier domains the analysis is community code developed over years, and the agent's job shifts from authoring to orchestrating and checking established codes.</li>
+      <li><b>The nature of validation</b> &mdash; cross-checks and lineage suffice where truth is computable from the data; where truth is provisional (theory, simulations, other instruments), validation is a discipline of its own.</li>
+      <li><b>Audience</b> &mdash; the analyst-on-staff pitch is translating expert work for non-experts; where the audience is the expert, the value shifts to coverage, speed, and error-catching.</li>
+      <li><b>Memory</b> &mdash; business definitions and baselines in this domain; in science, memory grows into literature: prior art, citations, what has been falsified.</li>
+      <li><b>Feedback thickness</b> &mdash; verbal corrections work for definitions; peer review is structured, adversarial, and years-delayed.</li>
+      <li><b>Consequence weight</b> &mdash; a wrong briefing annoys; a wrong result can misdirect instruments or policy. The action gates must be re-weighted accordingly.</li>
+    </ul>
+    <div class="note"><b>The claim is narrower than the loop.</b> This design is for data-to-decision work where a human owns the judgment and the data fits the team's own machines. Extending it to frontier domains does not change the loop &mdash; it upgrades each node into a subsystem.</div>
+
+    <h3>Worked examples</h3>
+    <p class="section-note">&ldquo;Serves as-is&rdquo; means the standard analyst-on-staff architecture (M1&ndash;M4), not today's CSV-only prototype.</p>
+    <p><b>Serves as-is</b> &mdash; domains where the surrounding variables sit inside the architecture's budget:</p>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Domain</th><th>Typical question</th><th>Why it fits</th></tr>
+        <tr><td>SaaS / e-commerce analytics</td><td>&ldquo;Why did activation drop last week?&rdquo;</td><td>The canonical case: warehouse/CSV-scale data, agent-authored SQL+pandas, cross-checkable numbers, exec&harr;analyst translation, quick verbal feedback, contained consequences.</td></tr>
+        <tr><td>Marketing performance</td><td>&ldquo;Which campaigns drove this quarter's pipeline?&rdquo;</td><td>Small structured data; standard funnels and ROAS are computable and checkable; audience altitude (CMO vs analyst) is the core feature.</td></tr>
+        <tr><td>Operations &amp; support analytics</td><td>&ldquo;Why is ticket resolution time rising?&rdquo;</td><td>Trends and segments over a small dataset; decisions stay with a human owner; definitions fit the memory store perfectly.</td></tr>
+        <tr><td>SMB finance / monthly close</td><td>&ldquo;Explain the variance vs budget.&rdquo;</td><td>Numbers must tie out &mdash; exactly what cross-checks and lineage are for; the definitions store carries the accounting conventions.</td></tr>
+        <tr><td>Team-level sports analytics</td><td>&ldquo;Is player load driving injury risk?&rdquo;</td><td>Small stats datasets; metrics are clear; coach vs analyst rendering is the same altitude feature as VP vs analyst.</td></tr>
+        <tr><td>Small-city civic data</td><td>&ldquo;Where is building-permit volume growing?&rdquo;</td><td>Public, low-volume data; standard aggregations; higher stakes than SaaS, but the approval-gated action layer covers it.</td></tr>
+      </table>
+    </div>
+    <p><b>Too taxing for the standard architecture</b> &mdash; each row names which surrounding variables break it; the loop still holds, the system doesn't:</p>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Domain</th><th>Typical question</th><th>What breaks</th></tr>
+        <tr><td>Astrophysics / particle physics</td><td>&ldquo;Is this excess significant?&rdquo;</td><td><b>Data substrate</b> (petabytes, FITS/ROOT, calibration pipelines), <b>authorship</b> (community codes built over decades &mdash; the agent orchestrates, doesn't write <code>analysis.py</code>), <b>validation</b> (truth is provisional: theory, simulations, systematics), <b>memory</b> (literature, not definitions), <b>feedback</b> (peer review, years-delayed), <b>audience</b> (experts &mdash; no translation value). Every variable at max tax.</td></tr>
+        <tr><td>Healthcare / clinical analytics</td><td>&ldquo;Does this intervention reduce readmissions?&rdquo;</td><td><b>Consequence weight</b> (patient harm, liability &mdash; gates become certification), <b>validation</b> (statistical cross-checks don't establish clinical validity; coding artifacts and missingness are informative and need domain judgment), <b>feedback</b> (regulatory, slow, adversarial). Data can be small; that's not the problem.</td></tr>
+        <tr><td>Trading / market analytics</td><td>&ldquo;Is this strategy alpha?&rdquo;</td><td><b>Data substrate</b> (high-frequency, non-stationary) and an <b>adversarial environment</b> &mdash; the market moves against you. Validation needs out-of-sample discipline beyond lineage; latency kills the human-gated action loop.</td></tr>
+        <tr><td>Climate science</td><td>&ldquo;What does this ensemble say about regional rainfall?&rdquo;</td><td><b>Data substrate</b> (model outputs, ensembles, netCDF), <b>authorship and validation</b> (community-standard workflows and intercomparisons, not authorable per run). Partial transfer: the briefing-and-audience layer fits policymakers &mdash; a good &ldquo;parts transfer, parts don't&rdquo; case.</td></tr>
+        <tr><td>Cybersecurity / threat detection</td><td>&ldquo;Is this endpoint compromised?&rdquo;</td><td><b>Adversarial + latency</b>: attackers adapt; detection is a real-time system, not a morning briefing. The human-approval action gate is too slow; false-positive costs are immediate.</td></tr>
+        <tr><td>Legal / e-discovery</td><td>&ldquo;Does this contract expose us?&rdquo;</td><td><b>Validation</b> (truth is authority-based &mdash; precedent, not cross-checkable numbers) and <b>memory</b> (the entire corpus of case law is context). Textual, argumentative truth is outside the loop's compute-and-verify assumption.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
     <h2>Design principles</h2>
     <p class="section-note">Six rules, ordered by how much trust each buys.</p>
     <div class="principles">
@@ -364,8 +421,8 @@
     <ol class="steps">
       <li><span class="t">07:00 &middot; trigger</span><b>The scheduler starts the daily run</b> &mdash; product, billing, and CRM data, each freshness-checked.</li>
       <li><span class="t">analyst core</span><b>The vetted pipelines run</b> for activation, retention, and revenue; outputs diff against historical baselines.</li>
-      <li><span class="t">anomaly</span><b>Retention in the SMB segment shows an accelerating decline.</b> The deterministic baseline flags it; the model attributes likely causes: a billing API error spike and Tuesday's pricing change.</li>
-      <li><span class="t">validation</span>Cross-check tests pass; <b>lineage is attached to every cited number</b>.</li>
+      <li><span class="t">anomaly</span><b>Retention in the SMB segment shows an accelerating decline.</b> The deterministic baseline flags it; the model attributes likely causes &mdash; a billing API error spike and Tuesday's pricing change &mdash; confirmed against external sources via web search.</li>
+      <li><span class="t">validation</span>Cross-check tests pass; <b>lineage is attached to every cited number</b>, including web-sourced facts (each with its URL).</li>
       <li><span class="t">rendering</span><b>The briefing renders at two altitudes</b> &mdash; a five-minute narrative for the VP Product (one chart per finding, decisions needed) and a full version for the analyst (methodology, caveats, scripts).</li>
       <li><span class="t">delivery</span>The VP's briefing lands in Slack behind a review gate; the analyst's version lands in their inbox.</li>
       <li><span class="t">escalation</span><b>Churn severity crosses threshold:</b> the system proposes an investigation task &mdash; assignee, severity, lineage links &mdash; for human approval.</li>
@@ -381,10 +438,11 @@
         <tr><td><span class="m-chip">M0</span> Chat prototype</td><td>Today's app</td><td class="state done">done</td></tr>
         <tr><td><span class="m-chip">M1</span> Briefing + knowledge</td><td>Briefing run type, definitions store, audience profiles</td><td>One daily briefing renders at two altitudes from stored definitions</td></tr>
         <tr><td><span class="m-chip">M2</span> Schedule + delivery</td><td>Scheduler, Slack/email renderer, human review gate</td><td>Briefings arrive without opening the app; console used for review</td></tr>
-        <tr><td><span class="m-chip">M3</span> Anomaly baselines</td><td>Deterministic stats (seasonality, z-scores) feeding findings</td><td>Anomalies cited against historical patterns with confidence</td></tr>
+        <tr><td><span class="m-chip">M3</span> Baselines + external context</td><td>Deterministic stats (seasonality, z-scores) feeding findings; a narrow web-search tool (Parallel Web Systems) for attribution</td><td>Anomalies cited against historical patterns and external events, with confidence</td></tr>
         <tr><td><span class="m-chip">M4</span> Action layer</td><td>Investigation tasks, severity routing, approval flows</td><td>Escalation creates a tracked task with a lineage link</td></tr>
       </table>
     </div>
+    <div class="note"><b>Web search (M3 scope).</b> When the agent needs external context &mdash; known outages, pricing changes, industry benchmarks &mdash; it uses a narrow search tool backed by <b>Parallel Web Systems</b>. Rules: search only for external context, never to compute from the dataset; every sourced fact must cite its URL and renders separately from computed numbers; enabled by env config, so the agent degrades gracefully without it.</div>
   </section>
 
   <section>
